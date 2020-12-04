@@ -1,0 +1,8 @@
+numpy
+scipy
+matplotlib
+torch
+rospy
+probreg
+scikit-image
+pycpd

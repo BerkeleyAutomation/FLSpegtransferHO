@@ -1,1 +1,4 @@
-# FLSpegtransferHO
+# FLSpegtransfer
+
+# Setup
+./setup.py install

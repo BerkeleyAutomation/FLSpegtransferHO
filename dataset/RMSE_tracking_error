@@ -1,0 +1,29 @@
+- Tracking Error (Root Mean Squared Error)
+- Number of Samples: 2000 (pick & place trajectory)
+
+- Model 1: 
+RMSE_total= 0.003703894249355248 (m)
+Average_total= 0.0035204668755594876 (m)
+SD_total= 0.0011511496811862892 (m)
+
+RMSE_each_axis= [0.00227957 0.002799   0.00082945] (m)
+Average_axis= [0.00191925 0.00256637 0.0006652 ] (m)
+SD_axis= [0.00123001 0.00111721 0.00049547] (m)
+
+- Model 2:
+RMSE_total= 0.0021592139055553795 (m)
+Average_total= 0.0020111562409111427 (m)
+SD_total= 0.0007857832172984327 (m)
+
+RMSE_each_axis= [0.00138897 0.0015883  0.00045853] (m)
+Average_axis= [0.00103608 0.00139121 0.00038395] (m)
+SD_axis= [0.00092509 0.00076631 0.00025067] (m)
+
+- Model 3:
+RMSE_total= 0.0035037772703143985 (m)
+Average_total= 0.0029914527962912074 (m)
+SD_total= 0.0018241889506115684 (m)
+
+RMSE_each_axis= [0.00173659 0.00281536 0.0011552 ] (m)
+Average_axis= [0.00136811 0.00235171 0.00040666] (m)
+SD_axis= [0.00106958 0.00154781 0.00108126] (m)
