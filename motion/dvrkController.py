@@ -1,4 +1,4 @@
-from FLSpegtransfer.motion.dvrkDualArm import dvrkDualArm
+from FLSpegtransfer.motion.dvrkArm import dvrkArm
 from FLSpegtransfer.training.dvrkCurrEstDNN import dvrkCurrEstDNN
 from FLSpegtransfer.training.dvrkHystCompDNN import dvrkHystCompDNN
 from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
@@ -8,9 +8,9 @@ import time
 import numpy as np
 
 
-class dvrkController(dvrkDualArm):
-    def __init__(self, comp_hysteresis=False, stop_collision=False):
-        super(dvrkController, self).__init__()
+class dvrkController(dvrkArm):
+    def __init__(self, arm_name, comp_hysteresis=False, stop_collision=False):
+        super(dvrkController, self).__init__(arm_name=arm_name)
 
         # Members
         self.stop_collision = stop_collision
@@ -26,7 +26,7 @@ class dvrkController(dvrkDualArm):
             for i in range(100):     # model start-up by padding dummy histories
                 self.detect_collision()
         if comp_hysteresis:
-            self.hyst_comp = dvrkHystCompDNN(history=6)  # hysteresis compensation model
+            self.hyst_comp = dvrkHystCompDNN(history=6, arm_name=arm_name)  # hysteresis compensation model
         self.dvrk_model = dvrkKinematics()
 
     @property
@@ -38,17 +38,20 @@ class dvrkController(dvrkDualArm):
         self._curr_threshold = value
         # print("curr_threshold updated=", self._curr_threshold)
 
-    def set_pose(self, pos1=[], rot1=[], pos2=[], rot2=[], wait_callback=True):
+    def set_pose(self, pos=None, rot=None, use_ik=True, wait_callback=True):
+        if pos is None:
+            pos = []
+        if rot is None:
+            rot = []
         if self.comp_hysteresis:
-            joint1 = self.dvrk_model.pose_to_joint(pos1, rot1)
-            joint2 = self.dvrk_model.pose_to_joint(pos2, rot2)
-            return self.set_joint(joint1=joint1, joint2=joint2, wait_callback=wait_callback, use_interpolation=False)
+            joint = self.dvrk_model.pose_to_joint(pos, rot)
+            return self.set_joint(joint=joint, wait_callback=wait_callback, use_interpolation=False)
         else:
-            return super().set_pose(pos1=pos1, rot1=rot1, pos2=pos2, rot2=rot2, wait_callback=wait_callback)
+            return super().set_pose(pos=pos, rot=rot, wait_callback=wait_callback)
             # return self.set_pose_interpolate(pos1=pos1, rot1=rot1, pos2=pos2, rot2=rot2, method='cubic')
 
     # specify intermediate points between q0 & qf
-    def set_pose_interpolate(self, pos1=[], rot1=[], pos2=[], rot2=[], method='cubic'):
+    def set_pose_interpolate(self, pos=[], rot1=[], pos2=[], rot2=[], method='cubic'):
         # Define q0 and qf for arm 1
         pos10, rot10 = self.arm1.get_current_pose(wait_callback=True)
         if len(pos1) == 0:
@@ -118,29 +121,33 @@ class dvrkController(dvrkDualArm):
         return True
 
     # only for stack dummy joint hysteresis
-    def set_joint_dummy(self, joint1=[], joint2=[], wait_callback=True, use_interpolation=False):
+    def set_joint_dummy(self, joint=None, wait_callback=True, use_interpolation=False):
+        if joint is None:
+            joint = []
         if self.comp_hysteresis:  # update new joint values
             if use_interpolation:  # use interpolated input to the hyst_comp model
-                self.hyst_comp.cal_interpolate(joint1, mode='calibrate')
+                self.hyst_comp.cal_interpolate(joint, mode='calibrate')
             else:
-                self.hyst_comp.step(joint1)
+                self.hyst_comp.step(joint)
 
-    def set_joint(self, joint1=[], joint2=[], wait_callback=True, use_interpolation=False):
+    def set_joint(self, joint=None, wait_callback=True, use_interpolation=False):
+        if joint is None:
+            joint = []
         if self.comp_hysteresis:    # update new joint values
             if use_interpolation:   # use interpolated input to the hyst_comp model
-                joint1 = self.hyst_comp.cal_interpolate(joint1, mode='calibrate')
+                joint = self.hyst_comp.cal_interpolate(joint, mode='calibrate')
             else:
-                joint1 = self.hyst_comp.step(joint1)
-        return super().set_joint(joint1=joint1, joint2=joint2, wait_callback=wait_callback)
+                joint = self.hyst_comp.step(joint)
+        return super().set_joint(joint=joint, wait_callback=wait_callback)
         # return self.set_joint_interpolate(joint1=joint1, joint2=joint2, method='cubic')
 
-    def set_joint_interpolate(self, joint1=[], joint2=[], method='cubic'):
+    def set_joint_interpolate(self, joint=[], method='cubic'):
         # Define q0 and qf for arm 1
         q10 = self.arm1.get_current_joint(wait_callback=True)
-        if len(joint1) == 0:
+        if len(joint) == 0:
             q1f = q10
         else:
-            q1f = joint1
+            q1f = joint
 
         # Define q0 and qf for arm 2
         q20 = self.arm2.get_current_joint(wait_callback=True)

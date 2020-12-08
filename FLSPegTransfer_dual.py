@@ -4,7 +4,7 @@ from FLSpegtransfer.vision.BallDetectionRGBD import BallDetectionRGBD
 from FLSpegtransfer.vision.GraspingPose3D import GraspingPose3D
 from FLSpegtransfer.vision.VisualizeDetection import VisualizeDetection
 from FLSpegtransfer.vision.PegboardCalibration import PegboardCalibration
-from FLSpegtransfer.motion.dvrkPegTransferMotionDualArm import dvrkPegTransferMotion
+from FLSpegtransfer.motion.dvrkPegTransferMotionDualArm import dvrkPegTransferMotionDualArm
 from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
 from FLSpegtransfer.path import *
 import numpy as np
@@ -29,7 +29,7 @@ class FLSPegTransfer:
         self.gp = {'PSM1': GraspingPose3D(which_arm='PSM1'), 'PSM2': GraspingPose3D(which_arm='PSM2')}
         self.vd = VisualizeDetection()
         self.pegboard = PegboardCalibration()
-        self.dvrk_motion = dvrkPegTransferMotion()
+        self.dvrk_motion = dvrkPegTransferMotionDualArm()
         self.dvrk_model = dvrkKinematics()
 
         # action ordering

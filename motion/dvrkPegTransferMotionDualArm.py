@@ -6,7 +6,7 @@ import numpy as np
 import threading, time
 
 
-class dvrkPegTransferMotion:
+class dvrkPegTransferMotionDualArm:
     """
     Motion library for peg transfer
     """
@@ -171,5 +171,5 @@ class dvrkPegTransferMotion:
 
 
 if __name__ == "__main__":
-    motion = dvrkPegTransferMotion()
+    motion = dvrkPegTransferMotionDualArm()
     motion.move_origin()

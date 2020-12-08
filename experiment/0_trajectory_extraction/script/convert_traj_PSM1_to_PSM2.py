@@ -6,7 +6,7 @@ from FLSpegtransfer.motion.deprecated.dvrkMotionBridgeP import dvrkMotionBridgeP
 dvrk_model = dvrkKinematics()
 dvrk_motion = dvrkMotionBridgeP()
 
-root = '/home/hwangmh/pycharmprojects/FLSpegtransfer/'
+root = '/home/hwangmh/pycharmprojects/FLSpzegtransfer/'
 dir = 'experiment/0_trajectory_extraction/PSM1/'
 filename = 'verification_peg_transfer.npy'
 joint_traj = np.load(root+dir+filename)

@@ -82,10 +82,10 @@ class NNModel(nn.Module):
         return y_pred.tolist()
 
 
-class dvrkHystCompDNN():
-    def __init__(self, history):
+class dvrkHystCompDNN:
+    def __init__(self, history, arm_name):
         self.H = history
-        self.models_q123, self.models_q4, self.models_q56 = self.load_models()
+        self.models_q123, self.models_q4, self.models_q56 = self.load_models(arm_name)
 
         # data members
         self.q_cmd_hist = []
@@ -95,26 +95,29 @@ class dvrkHystCompDNN():
         self.dt = 0.01  # sampling time interval
         self.q_cmd_int_prev = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
-    def load_models(self):
+    def load_models(self, arm_name):
         models_q123 = []
-        dir = "models/grey1_hysteresis/"
-        filename = root + dir + "model_grey_peg_sampled_q123.out"
+        if arm_name == '/PSM1':
+            dir = "models/new1_PSM1/"
+        elif arm_name == '/PSM2':
+            dir = "models/new2_PSM2/"
+        else:
+            raise ValueError
+        filename = root + dir + "model_new_random_smooth_q123.out"
         for i in range(5):
             model = NNModel(input_dim=3, output_dim=3)
             model.load_model(filename+str(i))
             models_q123.append(model)
 
         models_q4 = []
-        dir = "models/grey1_hysteresis/"
-        filename = root + dir + "model_grey_peg_sampled_q4.out"
+        filename = root + dir + "model_new_random_smooth_q4.out"
         for i in range(5):
             model = NNModel(input_dim=1, output_dim=1)
             model.load_model(filename + str(i))
             models_q4.append(model)
 
         models_q56 = []
-        dir = "models/grey1_hysteresis/"
-        filename = root + dir + "model_grey_peg_sampled_q56.out"
+        filename = root + dir + "model_new_random_smooth_q56.out"
         for i in range(10):
             model = NNModel(input_dim=self.H*2, output_dim=2)
             model.load_model(filename + str(i))
@@ -122,9 +125,7 @@ class dvrkHystCompDNN():
         return models_q123, models_q4, models_q56
 
     def model_out(self, x, models):
-        preds = []
-        for model in models:
-            preds.append(model.model_out(x))
+        preds = [model.model_out(x) for model in models]
         return np.median(preds, axis=0)
 
     # predict q_phy for all joints

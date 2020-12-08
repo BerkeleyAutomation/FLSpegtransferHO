@@ -2,11 +2,11 @@ from FLSpegtransfer.utils.ImgUtils import ImgUtils
 import numpy as np
 
 
-class GraspingPose3D():
+class GraspingPose3D:
     def __init__(self, which_arm='PSM1'):
         # sample grasping poses
-        self.sample_gps = self.sample_grasping_pose(gp_number=2, dist_center=6.0, dist_gp=3.0, which_arm=which_arm)
-        self.sample_pps = self.sample_grasping_pose(gp_number=2, dist_center=4.8, dist_gp=2.0, which_arm=which_arm)
+        self.sample_gps = self.sample_grasping_pose(gp_number=2, dist_center=5.3, dist_gp=2.3, which_arm=which_arm)
+        self.sample_pps = self.sample_grasping_pose(gp_number=2, dist_center=5.3, dist_gp=2.3, which_arm=which_arm)
         self.which_arm = which_arm
         self._pose_grasping = []
         self._pose_placing = []

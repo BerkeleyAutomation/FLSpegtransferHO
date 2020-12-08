@@ -197,4 +197,4 @@ class FLSPegTransfer:
                 exit()
 
 if __name__ == '__main__':
-    FLS = FLSPegTransfer(use_simulation=False, which_camera='inclined')
+    FLS = FLSPegTransfer(use_simulation=True, which_camera='inclined')

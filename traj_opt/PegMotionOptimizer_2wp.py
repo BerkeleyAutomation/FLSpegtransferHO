@@ -366,12 +366,12 @@ class PegMotionOptimizer_2wp:   # two way points
             print("vel_max = %3.4f, %3.4f, %3.4f, %3.4f, %3.4f, %3.4f" % tuple(np.max(abs(vel), axis=0)))
             print("acc_max = %3.4f, %3.4f, %3.4f, %3.4f, %3.4f, %3.4f" % tuple(np.max(abs(acc), axis=0)))
         if visualize:
-            self.plot_joint(t, pos, t[n11-1], pos[n11-1,:], t[n12-1], pos[n12-1,:])
-            self.plot_joint(t, vel, t[n11-1], vel[n11-1,:], t[n12-1], vel[n12-1,:])
-            self.plot_joint(t, acc, t[n11-1], acc[n11-1,:], t[n12-1], acc[n12-1,:])
+            self.plot_joint(t, pos, t[n11-1], pos[n11-1,:], t[n12-1], pos[n12-1,:], nb_figure=1, hold=False)
+            self.plot_joint(t, vel, t[n11-1], vel[n11-1,:], t[n12-1], vel[n12-1,:], nb_figure=2, hold=False)
+            self.plot_joint(t, acc, t[n11-1], acc[n11-1,:], t[n12-1], acc[n12-1,:], nb_figure=3, hold=True)
 
         # Second optimization (Use dt1, dt2, calculated from the first result)
-        H2 = int(t_total/t_step)+8  # 2 (step/joint), lost from the state change (pos -> vel)
+        H2 = int(t_total/t_step)
         n1_new = int(H2 * t1_ratio)
         n2_new = int(H2 * (t1_ratio+t2_ratio))
         st2 = time.time()
@@ -397,17 +397,18 @@ class PegMotionOptimizer_2wp:   # two way points
 
         if visualize:
             t = np.arange(len(pos)) * t_step
-            self.plot_joint(t, pos, t[n1_new-1], pos[n1_new-1,:], t[n2_new-1], pos[n2_new-1, :])
+            self.plot_joint(t, pos, t[n1_new-1], pos[n1_new-1,:], t[n2_new-1], pos[n2_new-1, :], nb_figure=1, hold=False)
             t = np.arange(len(vel)) * t_step
-            self.plot_joint(t, vel, t[n1_new-1], vel[n1_new-1,:], t[n2_new-1], vel[n2_new-1, :])
+            self.plot_joint(t, vel, t[n1_new-1], vel[n1_new-1,:], t[n2_new-1], vel[n2_new-1, :], nb_figure=2, hold=False)
             t = np.arange(len(acc)) * t_step
-            self.plot_joint(t, acc, t[n1_new-1], acc[n1_new-1,:], t[n2_new-1], acc[n2_new-1, :])
+            self.plot_joint(t, acc, t[n1_new-1], acc[n1_new-1,:], t[n2_new-1], acc[n2_new-1, :], nb_figure=3, hold=True)
         t = np.arange(len(pos)) * t_step
         return pos, vel, acc, t
 
-    def plot_joint(self, t, q, t_border, q_border, t_border2, q_border2):
+    def plot_joint(self, t, q, t_border, q_border, t_border2, q_border2, nb_figure, hold):
         # Create plot
         # plt.title('joint angle')
+        plt.figure(nb_figure)
         ax = plt.subplot(611)
         plt.plot(t, q[:, 0], 'b.-', t_border, q_border[0], 'ro-', t_border2, q_border2[0], 'ro-')
         plt.legend(loc='upper center', bbox_to_anchor=(0.9, 2))
@@ -446,4 +447,5 @@ class PegMotionOptimizer_2wp:   # two way points
         # plt.legend(['desired', 'actual'])
         plt.ylabel('q6 (rad)')
         plt.xlabel('time (s)')
-        plt.show()
+        if hold:
+            plt.show()

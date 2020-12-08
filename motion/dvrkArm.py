@@ -246,7 +246,7 @@ class dvrkArm(object):
             self.set_pose(traj[-1][:3], U.euler_to_quaternion(traj[-1][3:]), wait_callback=True)
             return True
 
-    def set_joint(self, joint, wait_callback=True):
+    def set_joint(self, joint, wait_callback=True, delay=False):
         assert not np.isnan(np.sum(joint))
         msg = JointState()
         msg.position = joint

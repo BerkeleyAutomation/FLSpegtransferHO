@@ -3,7 +3,7 @@ from FLSpegtransfer.vision.BlockDetection3D import BlockDetection3D
 from FLSpegtransfer.vision.GraspingPose3D import GraspingPose3D
 from FLSpegtransfer.vision.VisualizeDetection import VisualizeDetection
 from FLSpegtransfer.vision.PegboardCalibration import PegboardCalibration
-from FLSpegtransfer.motion.dvrkPegTransferMotionOptimized import dvrkPegTransferMotion
+from FLSpegtransfer.motion.dvrkPegTransferMotionOptimized import dvrkPegTransferMotionOptimized
 from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
 from FLSpegtransfer.path import *
 import numpy as np
@@ -27,7 +27,7 @@ class FLSPegTransfer:
         self.gp = GraspingPose3D()
         self.vd = VisualizeDetection()
         self.pegboard = PegboardCalibration()
-        self.dvrk_motion = dvrkPegTransferMotion()
+        self.dvrk_motion = dvrkPegTransferMotionOptimized()
         self.dvrk_model = dvrkKinematics()
 
         # action ordering
@@ -78,11 +78,15 @@ class FLSPegTransfer:
         gp_pick_robot = self.transform_task2robot(gp_pick[1:])  # [x,y,z]
         gp_place_robot = self.transform_task2robot(gp_place[1:])
         if self.action_order==0 or self.action_order==6:
+            print("go and pick")
             self.dvrk_motion.go_pick(pos_pick=gp_pick_robot, rot_pick=gp_pick[0])
         else:
+            print("return to peg")
             self.dvrk_motion.return_to_peg(pos_pick=gp_pick_robot, rot_pick=gp_pick[0])
+        print ("transfer block")
         self.dvrk_motion.transfer_block(pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
                                         pos_place=gp_place_robot, rot_place=gp_place[0])
+
 
         # visual servoing prior to drop
         # delta, seen = self.place_servoing()
@@ -110,15 +114,15 @@ class FLSPegTransfer:
         return delta, seen
 
     def update_images(self):
-        # if self.use_simulation:
-        if self.action_order <= 5:
-            self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined.npy')
-            self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined.npy')
+        if self.use_simulation:
+            if self.action_order <= 5:
+                self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined.npy')
+                self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined.npy')
+            else:
+                self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined_rhp.npy')
+                self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined_rhp.npy')
         else:
-            self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined_rhp.npy')
-            self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined_rhp.npy')
-        # else:
-        #     self.color, _, self.point = self.zivid.capture_3Dimage(color='BGR')
+            self.color, _, self.point = self.zivid.capture_3Dimage(color='BGR')
 
     def main(self):
         while True:
@@ -195,4 +199,4 @@ class FLSPegTransfer:
                 exit()
 
 if __name__ == '__main__':
-    FLS = FLSPegTransfer(use_simulation=True, which_camera='inclined')
+    FLS = FLSPegTransfer(use_simulation=False, which_camera='inclined')

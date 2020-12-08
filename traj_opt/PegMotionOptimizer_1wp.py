@@ -78,10 +78,16 @@ class PegMotionOptimizer_1wp:  # 1 way point
         Aa = np.zeros((6, H-2, 4))  # abs. max acc for each joint
         Av = np.zeros((6, H-1, 4))  # abs. max vel for each joint
         for i in range(6):
-            Aa[i, :n, 2] = -max_acc[i]
+            Aa[i, :n-1, 2] = -max_acc[i]
+            Aa[i, n-2, 2] = -max_acc[i]/2
+            Aa[i, n-2, 3] = -max_acc[i]/2
+            Aa[i, n-1, 2] = -max_acc[i]/2
+            Aa[i, n-1, 3] = -max_acc[i]/2
             Aa[i, n:, 3] = -max_acc[i]
         for i in range(6):
-            Av[i, :n, 0] = -max_vel[i]
+            Av[i, :n-1, 0] = -max_vel[i]
+            Av[i, n-1, 0] = -max_vel[i]/2
+            Av[i, n-1, 1] = -max_vel[i]/2
             Av[i, n:, 1] = -max_vel[i]
         A_ub = np.block([[A1, Az1, Az1, Az1, Az1, Az1, Aa[0]],
                          [Az1, A1, Az1, Az1, Az1, Az1, Aa[1]],
@@ -125,17 +131,17 @@ class PegMotionOptimizer_1wp:  # 1 way point
         # constraint 2: q(tw) = qw (waypoint)
         for i in range(6):
             const = np.zeros(6*H + 4)
-            const[i * H + n - 1] = 1.0
+            const[i * H + n] = 1.0
             A_eq.append(const)
             b_eq.append(qw[i])
 
         # constraint 3: q_dot(tw) = dqw*alpha (direction at waypoint)
         for i in range(5):
             const = np.zeros(6*H + 4)
-            const[i*H+n-1] = -dqw[i+1]
-            const[i*H+n] = dqw[i+1]
-            const[(i+1)*H+n-1] = dqw[i]
-            const[(i+1)*H+n] = -dqw[i]
+            const[i*H+n] = -dqw[i+1]
+            const[i*H+n+1] = dqw[i+1]
+            const[(i+1)*H+n] = dqw[i]
+            const[(i+1)*H+n+1] = -dqw[i]
             A_eq.append(const)
             b_eq.append(0.0)
 
@@ -164,7 +170,7 @@ class PegMotionOptimizer_1wp:  # 1 way point
         A_eq = np.array(A_eq)
         return Q, c, A_ub, b_ub, A_eq, b_eq
 
-    def define_QP_matrix2(self, q0, qw, dqw, qf, horizon, nb_waypoint, t_step=0.01):
+    def define_QP_matrix2(self, q0, qw, dqw, qf, max_vel, max_acc, horizon, nb_waypoint, t_step=0.01):
         # define Q, c, A_eq, b_eq
         # such that
         #    x = [v10, ..., v1(H-1) | v20, ..., v2(H-1) | ... | v60, ..., v6(H-1) ] (6*H)
@@ -206,7 +212,7 @@ class PegMotionOptimizer_1wp:  # 1 way point
                       [Az, Az, Az, Az, Az, As]])
         c = np.zeros(6*H, dtype=np.float)
 
-        # No inequality condition
+        # Inequality
         A_ub = []
         b_ub = []
 
@@ -216,7 +222,7 @@ class PegMotionOptimizer_1wp:  # 1 way point
         # constraint 1: q(tw)-q(t0) = qw-q0 (waypoint)
         for i in range(6):
             const = np.zeros(6*H)
-            for k in range(n):
+            for k in range(n-1):
                 const[i*H + k] = 1.0
             A_eq.append(const)
             b_eq.append((qw[i]-q0[i])/t_step)
@@ -276,6 +282,8 @@ class PegMotionOptimizer_1wp:  # 1 way point
         H1 = horizon
         n1 = H1//2
         n2 = H1 - n1
+        max_vel = np.array(max_vel)     # safety margin
+        max_acc = np.array(max_acc)
 
         st1 = time.time()
         Q, c, A_ub, b_ub, A_eq, b_eq = self.define_QP_matrix1(q0, qw, dqw, qf, max_vel=max_vel, max_acc=max_acc, horizon=H1, nb_waypoint=n1)
@@ -322,16 +330,16 @@ class PegMotionOptimizer_1wp:  # 1 way point
             print("vel_max = %3.4f, %3.4f, %3.4f, %3.4f, %3.4f, %3.4f" % tuple(np.max(abs(vel), axis=0)))
             print("acc_max = %3.4f, %3.4f, %3.4f, %3.4f, %3.4f, %3.4f" % tuple(np.max(abs(acc), axis=0)))
         if visualize:
-            self.plot_joint(t, pos, t[n1-1], pos[n1-1, :])
-            self.plot_joint(t, vel, t[n1-1], vel[n1-1, :])
-            self.plot_joint(t, acc, t[n1-1], acc[n1-1, :])
+            self.plot_joint(t, pos, t[n1-1], pos[n1-1, :], nb_figure=1, hold=False)
+            self.plot_joint(t, vel, t[n1-1], vel[n1-1, :], nb_figure=2, hold=False)
+            self.plot_joint(t, acc, t[n1-1], acc[n1-1, :], nb_figure=3, hold=True)
 
         # Second optimization (Use dt1, dt2, calculated from the first result)
-        H2 = int(t_total/t_step)+8  # 2 (step/joint), lost from the state change (pos -> vel)
+        t_total = t_total
+        H2 = int(t_total/t_step)
         n1_new = int(H2 * t1_ratio)
-        n2_new = H2 - n1_new
         st2 = time.time()
-        Q, c, A_ub, b_ub, A_eq, b_eq = self.define_QP_matrix2(q0, qw, dqw, qf, horizon=H2, nb_waypoint=n1_new, t_step=t_step)
+        Q, c, A_ub, b_ub, A_eq, b_eq = self.define_QP_matrix2(q0, qw, dqw, qf, max_vel=max_vel, max_acc=max_acc, horizon=H2, nb_waypoint=n1_new, t_step=t_step)
         result2 = self.solve_QP(Q, c, A_ub, b_ub, A_eq, b_eq)
         t_solve2 = time.time() - st2
 
@@ -346,24 +354,25 @@ class PegMotionOptimizer_1wp:  # 1 way point
             print("")
             print("< The 2nd optimization >")
             print("# of points = %3.4f" % H2)
-            print("n_ratio = %3.4f" % n1_new, ":%3.4f" % n2_new)
+            print("n_ratio = %3.4f" % n1_new, ":%3.4f" % (H2 - n1_new))
             print("time_solve = %3.4f" % t_solve2)
             print("vel_max = %3.4f, %3.4f, %3.4f, %3.4f, %3.4f, %3.4f" % tuple(np.max(abs(vel), axis=0)))
             print("acc_max = %3.4f, %3.4f, %3.4f, %3.4f, %3.4f, %3.4f" % tuple(np.max(abs(acc), axis=0)))
 
         if visualize:
             t = np.arange(len(pos)) * t_step
-            self.plot_joint(t, pos, t[n1_new-1], pos[n1_new-1,:])
+            self.plot_joint(t, pos, t[n1_new-1], pos[n1_new-1,:], nb_figure=1, hold=False)
             t = np.arange(len(vel)) * t_step
-            self.plot_joint(t, vel, t[n1_new-1], vel[n1_new-1,:])
+            self.plot_joint(t, vel, t[n1_new-1], vel[n1_new-1,:], nb_figure=2, hold=False)
             t = np.arange(len(acc)) * t_step
-            self.plot_joint(t, acc, t[n1_new-1], acc[n1_new-1,:])
+            self.plot_joint(t, acc, t[n1_new-1], acc[n1_new-1,:], nb_figure=3, hold=True)
         t = np.arange(len(pos)) * t_step
         return pos, vel, acc, t
 
-    def plot_joint(self, t, q, t_border, q_border):
+    def plot_joint(self, t, q, t_border, q_border, nb_figure, hold=True):
         # Create plot
         # plt.title('joint angle')
+        plt.figure(nb_figure)
         ax = plt.subplot(611)
         plt.plot(t, q[:, 0], 'b.-', t_border, q_border[0], 'ro-')
         plt.legend(loc='upper center', bbox_to_anchor=(0.9, 2))
@@ -402,4 +411,5 @@ class PegMotionOptimizer_1wp:  # 1 way point
         # plt.legend(['desired', 'actual'])
         plt.ylabel('q6 (rad)')
         plt.xlabel('time (s)')
-        plt.show()
+        if hold:
+            plt.show()
