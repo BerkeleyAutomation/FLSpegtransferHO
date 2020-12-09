@@ -101,7 +101,8 @@ def transfer_block(optimizer, pos_pick, rot_pick, pos_place, rot_place, vel_limi
         q_pos.append(traj3)
     else:
         raise ValueError
-    return q_pos
+    ref_waypoints = np.concatenate((q0, qw1, qw2, qf), axis=0).reshape(4, 6)
+    return q_pos, ref_waypoints
 
 
 # trajectory of returning to another peg to pick-up
@@ -158,7 +159,8 @@ def return_to_peg(optimizer, pos_place_curr, rot_place_curr, pos_pick_next, rot_
         q_pos.append(traj3)
     else:
         raise ValueError
-    return q_pos
+    ref_waypoints = np.concatenate((q0,qw1,qw2,qf), axis=0).reshape(4,6)
+    return q_pos, ref_waypoints
 
 
 # load transform
@@ -172,7 +174,7 @@ vd = VisualizeDetection()
 pegboard = PegboardCalibration()
 dvrk_model = dvrkKinematics()
 motion_opt_2wp = PegMotionOptimizer_2wp()
-motion_opt_cubic = CubicOptimizer()
+motion_opt_cubic = CubicOptimizer_2wp()
 
 # action ordering
 action_list = np.array([[1, 7], [0, 6], [3, 8], [2, 9], [5, 11], [4, 10],  # left to right
@@ -185,6 +187,7 @@ max_acc = [1.0, 1.0, 1.0, 8.0, 8.0, 8.0]     # max acceleration (rad/s^2) or (m/
 traj = []
 traj_opt_cubic = []
 traj_opt_QP = []
+ref_waypoints = []
 for action_order, action in enumerate(action_list):
     print (action)
     # load images
@@ -218,28 +221,31 @@ for action_order, action in enumerate(action_list):
     if action_order==0 or action_order==6:
         pass
     else:
-        qs = return_to_peg(optimizer=motion_opt_cubic, pos_place_curr=gp_place_robot_prev, rot_place_curr=gp_place_prev[0],
+        qs, waypoints = return_to_peg(optimizer=motion_opt_cubic, pos_place_curr=gp_place_robot_prev, rot_place_curr=gp_place_prev[0],
                            pos_pick_next=gp_pick_robot, rot_pick_next=gp_pick[0], vel_limit=max_vel, acc_limit=max_acc, method='cubic_optimizer')
         traj_opt_cubic.append(qs)
-        qs = return_to_peg(optimizer=motion_opt_2wp, pos_place_curr=gp_place_robot_prev, rot_place_curr=gp_place_prev[0],
-                           pos_pick_next=gp_pick_robot, rot_pick_next=gp_pick[0], vel_limit=max_vel, acc_limit=max_acc, method='cubic_cartesian')
-        traj.append(qs)
-        qs = return_to_peg(optimizer=motion_opt_2wp, pos_place_curr=gp_place_robot_prev, rot_place_curr=gp_place_prev[0],
-                           pos_pick_next=gp_pick_robot, rot_pick_next=gp_pick[0], vel_limit=max_vel, acc_limit=max_acc, method='optimization')
-        traj_opt_QP.append(qs)
+        ref_waypoints.append(waypoints)
+        # qs, _ = return_to_peg(optimizer=motion_opt_2wp, pos_place_curr=gp_place_robot_prev, rot_place_curr=gp_place_prev[0],
+        #                    pos_pick_next=gp_pick_robot, rot_pick_next=gp_pick[0], vel_limit=max_vel, acc_limit=max_acc, method='cubic_cartesian')
+        # traj.append(qs)
+        # qs, _ = return_to_peg(optimizer=motion_opt_2wp, pos_place_curr=gp_place_robot_prev, rot_place_curr=gp_place_prev[0],
+        #                    pos_pick_next=gp_pick_robot, rot_pick_next=gp_pick[0], vel_limit=max_vel, acc_limit=max_acc, method='optimization')
+        # traj_opt_QP.append(qs)
 
-    qs = transfer_block(optimizer=motion_opt_cubic, pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
+    qs, waypoints = transfer_block(optimizer=motion_opt_cubic, pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
                           pos_place=gp_place_robot, rot_place=gp_place[0], vel_limit=max_vel, acc_limit=max_acc, method='cubic_optimizer')
     traj_opt_cubic.append(qs)
-    qs = transfer_block(optimizer=motion_opt_2wp, pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
-                          pos_place=gp_place_robot, rot_place=gp_place[0], vel_limit=max_vel, acc_limit=max_acc, method='cubic_cartesian')
-    traj.append(qs)
-    qs = transfer_block(optimizer=motion_opt_2wp, pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
-                          pos_place=gp_place_robot, rot_place=gp_place[0], vel_limit=max_vel, acc_limit=max_acc, method='optimization')
-    traj_opt_QP.append(qs)
+    ref_waypoints.append(waypoints)
+    # qs, _ = transfer_block(optimizer=motion_opt_2wp, pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
+    #                       pos_place=gp_place_robot, rot_place=gp_place[0], vel_limit=max_vel, acc_limit=max_acc, method='cubic_cartesian')
+    # traj.append(qs)
+    # qs, _ = transfer_block(optimizer=motion_opt_2wp, pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
+    #                       pos_place=gp_place_robot, rot_place=gp_place[0], vel_limit=max_vel, acc_limit=max_acc, method='optimization')
+    # traj_opt_QP.append(qs)
     gp_place_prev = gp_place
     gp_place_robot_prev = gp_place_robot
 
 np.save("traj", traj)
 np.save("traj_opt_cubic", traj_opt_cubic)
 np.save("traj_opt_QP", traj_opt_QP)
+np.save("ref_waypoints", ref_waypoints)
