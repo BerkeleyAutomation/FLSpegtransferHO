@@ -80,22 +80,27 @@ class VisualizeDetection():
         img_overlayed = self.overlay_block(img_overlayed, pose_blks)
         return img_overlayed
 
-    def plot3d(self, pnt_blocks=[], pnt_masks=[], pnt_pegs=[], pnt_grasping=[]):
+    def plot3d(self, pnt_blocks=[], pnt_masks=[], pnt_pegs=[], pnt_grasping1=[], pnt_grasping2=[]):
         pnt_blocks = np.array(pnt_blocks)
         pnt_masks = np.array(pnt_masks)
         pnt_pegs = np.array(pnt_pegs)
-        pnt_grasping = np.array(pnt_grasping)
+        pnt_grasping1 = np.array(pnt_grasping1)
+        pnt_grasping2 = np.array(pnt_grasping2)
         mlab.figure("FLS Peg Transfer", fgcolor=(0., 0., 0.), bgcolor=(1, 1, 1), size=(1200, 900))  # black background
-        if pnt_masks != []:
-            mlab.points3d(pnt_masks[:, 0], pnt_masks[:, 1], pnt_masks[:, 2], color=(0.0, 1.0, 0.0), scale_factor=0.2)  # green on masks
+        for pnt_mask in pnt_masks:
+            if pnt_mask != []:
+                mlab.points3d(pnt_mask[:, 0], pnt_mask[:, 1], pnt_mask[:, 2], color=(0.0, 1.0, 0.0), scale_factor=0.3)  # green on masks
+        for pnt_block in pnt_blocks:
+            if pnt_block != []:
+                mlab.points3d(pnt_block[:, 0], pnt_block[:, 1], pnt_block[:, 2], color=(1.0, 1.0, 0.0), scale_factor=.5)    # yellow on blocks
+        if pnt_grasping1 != []:
+            mlab.points3d(pnt_grasping1[:, 0], pnt_grasping1[:, 1], pnt_grasping1[:, 2], color=(1.0, 0.0, 0.0), scale_factor=1.7)  # red on grasping point
+        if pnt_grasping2 != []:
+            mlab.points3d(pnt_grasping2[:, 0], pnt_grasping2[:, 1], pnt_grasping2[:, 2], color=(0.0, 0.0, 1.0), scale_factor=1.7)  # blue on grasping point
         if pnt_pegs != []:
-            mlab.points3d(pnt_pegs[:, 0], pnt_pegs[:, 1], pnt_pegs[:, 2], color=(0.0, 0.0, 1.0), scale_factor=3.0)      # blue on pegs
-        if pnt_grasping != []:
-            mlab.points3d(pnt_grasping[:, 0], pnt_grasping[:, 1], pnt_grasping[:, 2], color=(1.0, 0.0, 0.0), scale_factor=1.5)
-        if pnt_blocks != []:
-            mlab.points3d(pnt_blocks[:, 0], pnt_blocks[:, 1], pnt_blocks[:, 2], color=(1.0, 1.0, 0.0), scale_factor=.3)    # yellow on blocks
-        mlab.axes(xlabel='x', ylabel='y', zlabel='z', z_axis_visibility=False)
+            mlab.points3d(pnt_pegs[:, 0], pnt_pegs[:, 1], pnt_pegs[:, 2], color=(0.0, 0.0, 0.0), scale_factor=3.2)  # black on pegs
+        # mlab.axes(xlabel='x', ylabel='y', zlabel='z', z_axis_visibility=False)
         mlab.orientation_axes()
-        mlab.outline(color=(.7, .7, .7))
+        # mlab.outline(color=(.7, .7, .7))
         mlab.view(azimuth=180, elevation=180)
         mlab.show()

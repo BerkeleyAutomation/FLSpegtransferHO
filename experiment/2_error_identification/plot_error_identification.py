@@ -6,7 +6,7 @@ plt.style.use('seaborn-whitegrid')
 # plt.style.use('bmh')
 plt.rc('font', size=12)          # controls default text sizes
 plt.rc('axes', titlesize=20)     # fontsize of the axes title
-plt.rc('axes', labelsize=13)    # fontsize of the x and y labels
+plt.rc('axes', labelsize=15)    # fontsize of the x and y labels
 plt.rc('xtick', labelsize=13)    # fontsize of the tick labels
 plt.rc('ytick', labelsize=13)    # fontsize of the tick labels
 plt.rc('legend', fontsize=17)    # legend fontsize
@@ -66,61 +66,69 @@ def plot_joint_compare(q_des1, q_act1, q_des2, q_act2):
     RMSE1 = []
     for i in range(6):
         RMSE1.append(np.sqrt(np.sum((q_des1[:, i] - q_act1[:, i]) ** 2) / len(q_des1[:, i])))
-    print("RMSE1=", RMSE1)
+    print("RMSE1=", RMSE1, "(rad or m)")
+    print (np.rad2deg(RMSE1))
+    err1 = abs(q_des1 - q_act1)
+    print ("SD1=", np.std(err1, axis=0))
+    print("MAX1=", np.max(err1, axis=0))
 
     RMSE2 = []
     for i in range(6):
         RMSE2.append(np.sqrt(np.sum((q_des2[:, i] - q_act2[:, i]) ** 2) / len(q_des2[:, i])))
-    print("RMSE2=", RMSE2)
+    print("RMSE2=", RMSE2, "(rad or m)")
+    print(np.rad2deg(RMSE2))
+    err2 = abs(q_des2 - q_act2)
+    print("SD2=", np.std(err2, axis=0))
+    print("MAX2=", np.max(err2, axis=0))
 
     # Create plot
     # plt.title('joint angle')
     plt.figure(0)
     ax = plt.subplot2grid((6, 2), (0, 0))
-    plt.plot(q_des1[:,0]*180./np.pi, 'b-')
-    plt.plot(q_act1[:, 0] * 180. / np.pi, 'r-')
+    plt.plot(q_des1[:,0], 'b-')
+    plt.plot(q_act1[:,0], 'r-')
     plt.legend(loc='upper center', bbox_to_anchor=(0.9,2))
     ax.set_xticklabels([])
-    plt.ylabel('q0 ($^\circ$)')
+    plt.ylabel('q$_1$ (rad)')
 
     ax = plt.subplot2grid((6, 2), (1, 0))
-    plt.plot(q_des1[:, 1]*180./np.pi, 'b-')
-    plt.plot(q_act1[:, 1]*180./np.pi, 'r-')
+    plt.plot(q_des1[:, 1], 'b-')
+    plt.plot(q_act1[:, 1], 'r-')
     ax.set_xticklabels([])
-    plt.ylabel('q2 ($^\circ$)')
+    plt.ylabel('q$_2$ (rad)')
 
     ax = plt.subplot2grid((6, 2), (2, 0))
     plt.plot(q_des1[:, 2], 'b-')
     plt.plot(q_act1[:, 2], 'r-')
     ax.set_xticklabels([])
-    plt.ylabel('q3 (m)')
+    plt.ylabel('q$_3$ (m)')
 
     ax = plt.subplot2grid((6, 2), (3, 0))
-    plt.plot(q_des1[:, 3]*180./np.pi, 'b-')
-    plt.plot(q_act1[:, 3]*180./np.pi, 'r-')
+    plt.plot(q_des1[:, 3], 'b-')
+    plt.plot(q_act1[:, 3], 'r-')
     ax.set_xticklabels([])
-    plt.ylabel('q4 ($^\circ$)')
+    plt.ylabel('q$_4$ (rad)')
 
     ax = plt.subplot2grid((6, 2), (4, 0))
-    plt.plot(q_des1[:, 4]*180./np.pi, 'b-')
-    plt.plot(q_act1[:, 4]*180./np.pi, 'r-')
+    plt.plot(q_des1[:, 4], 'b-')
+    plt.plot(q_act1[:, 4], 'r-')
     ax.set_xticklabels([])
-    plt.ylabel('q5 ($^\circ$)')
+    plt.ylabel('q$_5$ (rad)')
 
     ax = plt.subplot2grid((6, 2), (5, 0))
-    plt.plot(q_des1[:, 5]*180./np.pi, 'b-')
-    plt.plot(q_act1[:, 5]*180./np.pi, 'r-')
-    plt.ylabel('q6 ($^\circ$)')
+    plt.plot(q_des1[:, 5], 'b-')
+    plt.plot(q_act1[:, 5], 'r-')
+    plt.ylabel('q$_6$ (rad)')
     plt.xlabel('sample number')
 
     ax = plt.subplot2grid((6, 2), (0, 1))
-    plt.plot(q_des2[:,0]*180./np.pi, 'b-')
-    plt.plot(q_act2[:, 0] * 180. / np.pi, 'r-')
+    plt.plot(q_des2[:,0], 'b-')
+    plt.plot(q_act2[:,0], 'r-')
     ax.set_xticklabels([])
 
     ax = plt.subplot2grid((6, 2), (1, 1))
-    plt.plot(q_des2[:, 1]*180./np.pi, 'b-')
-    plt.plot(q_act2[:, 1]*180./np.pi, 'r-')
+    plt.plot(q_des2[:, 1], 'b-')
+    plt.plot(q_act2[:, 1], 'r-')
     ax.set_xticklabels([])
 
     ax = plt.subplot2grid((6, 2), (2, 1))
@@ -129,18 +137,18 @@ def plot_joint_compare(q_des1, q_act1, q_des2, q_act2):
     ax.set_xticklabels([])
 
     ax = plt.subplot2grid((6, 2), (3, 1))
-    plt.plot(q_des2[:, 3]*180./np.pi, 'b-')
-    plt.plot(q_act2[:, 3]*180./np.pi, 'r-')
+    plt.plot(q_des2[:, 3], 'b-')
+    plt.plot(q_act2[:, 3], 'r-')
     ax.set_xticklabels([])
 
     ax = plt.subplot2grid((6, 2), (4, 1))
-    plt.plot(q_des2[:, 4]*180./np.pi, 'b-')
-    plt.plot(q_act2[:, 4]*180./np.pi, 'r-')
+    plt.plot(q_des2[:, 4], 'b-')
+    plt.plot(q_act2[:, 4], 'r-')
     ax.set_xticklabels([])
 
     ax = plt.subplot2grid((6, 2), (5, 1))
-    plt.plot(q_des2[:, 5]*180./np.pi, 'b-')
-    plt.plot(q_act2[:, 5]*180./np.pi, 'r-')
+    plt.plot(q_des2[:, 5], 'b-')
+    plt.plot(q_act2[:, 5], 'r-')
     plt.xlabel('sample number')
     plt.show()
 
@@ -197,7 +205,6 @@ def plot_hysteresis(q_des, q_act, joint_index):
     plt.title('Hysteresis of q',joint_index)
     plt.show()
 
-
 def save_outlier(trajectory, n_data):
     for i,joints in enumerate(trajectory):
         if joints[3]==joints[4]==joints[5]==0.0:
@@ -216,6 +223,16 @@ def save_outlier(trajectory, n_data):
                 c = np.linalg.lstsq(A, b, rcond=None)[0]
                 trajectory[i][j+3] = c[0]*i**3 + c[1]*i**2 + c[2]*i + c[3]
     return trajectory
+
+# (exp.) randomly move all joints
+from FLSpegtransfer.path import *
+file_path = root+'dataset/random_smooth_grey1_PSM1/'
+q_phy_PSM1 = np.load(file_path+'q_phy.npy')[:1000]
+q_cmd_PSM1 = np.load(file_path+'q_cmd.npy')[:1000]
+file_path = root+'dataset/random_smooth_grey2_PSM2/'
+q_phy_PSM2 = np.load(file_path+'q_phy.npy')[:1000]
+q_cmd_PSM2 = np.load(file_path+'q_cmd.npy')[:1000]
+plot_joint_compare(q_cmd_PSM1, q_phy_PSM1, q_cmd_PSM2, q_phy_PSM2)
 
 # (exp.1) randomly move all joints
 file_path = 'exp1/'

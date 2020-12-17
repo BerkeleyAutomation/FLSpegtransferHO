@@ -1,4 +1,4 @@
-from FLSpegtransfer.traj_opt.PegMotionOptimizer_2wp import PegMotionOptimizer_2wp
+from FLSpegtransfer.traj_opt.QPOptimizer_2wp import PegMotionOptimizer_2wp
 # from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
 from FLSpegtransfer.utils import CmnUtil as U
 import numpy as np

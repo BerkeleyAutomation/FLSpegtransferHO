@@ -25,24 +25,25 @@ class CubicOptimizer_2wp:
         self.t_step = []
 
     # calculate cubic coefficients of with minimim execution time
-    def get_cubic_spline(self, q0, qf, v0, vf, tf_range=None):
+    @classmethod
+    def get_cubic_spline(cls, q0, qf, v0, vf, max_vel, max_acc, tf_range=None):
         q0 = np.array(q0)
         qf = np.array(qf)
         v0 = np.array(v0)
         vf = np.array(vf)
         if tf_range is None:
-            tf_range = [0.01, 5.0]
-        tf = np.arange(start=tf_range[0], stop=tf_range[1], step=0.01).reshape(-1,1)
+            tf_range = np.array([0.01, 2.0, 0.01])
+        tf = np.arange(start=tf_range[0], stop=tf_range[1], step=tf_range[2]).reshape(-1, 1)
         a = (vf * tf + v0 * tf + 2 * q0 - 2 * qf) / tf ** 3
         b = (vf - v0) / (2 * tf) - 3 / 2 * a * tf
         c = v0
         d = q0
 
         # extreme values
-        cond0 = (0 <= -b/(3*a)) & (-b/(3*a) <= tf)    # if extreme point is within the range (0~tf)
-        cond1 = abs(-b**2/(3*a)+c) <= self.max_vel    # velocity constraint
-        cond2 = abs(2*b) <= self.max_acc              # acceleration constraint at the left border
-        cond3 = abs(6*a*tf + 2*b) <= self.max_acc     # acceleration constraint at the right border
+        cond0 = (0 <= -b/(3*a)) & (-b/(3*a) <= tf)  # if extreme point is within the range (0~tf)
+        cond1 = abs(-b**2/(3*a)+c) <= max_vel       # velocity constraint
+        cond2 = abs(2*b) <= max_acc                 # acceleration constraint at the left border
+        cond3 = abs(6*a*tf + 2*b) <= max_acc        # acceleration constraint at the right border
         flag = ~(cond0 & ~cond1) & cond2 & cond3
         arg_min = min(np.argwhere(np.all(flag, axis=1)))[0]
         tf_min = tf[arg_min][0]
@@ -51,10 +52,13 @@ class CubicOptimizer_2wp:
 
     def combine_trajectory(self, vw1, vw2):
         v0 = np.zeros_like(vw1)
-        coeff1, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw1, v0=v0, vf=vw1)  # 1st traj.
-        coeff2, tf2 = self.get_cubic_spline(q0=self.qw1, qf=self.qw2, v0=vw1, vf=vw2)  # 2nd traj.
+        coeff1, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw1, v0=v0, vf=vw1,
+                                            max_vel=self.max_vel, max_acc=self.max_acc, tf_range=[0.01, 2.0, self.t_step])  # 1st traj.
+        coeff2, tf2 = self.get_cubic_spline(q0=self.qw1, qf=self.qw2, v0=vw1, vf=vw2,
+                                            max_vel=self.max_vel, max_acc=self.max_acc, tf_range=[0.01, 2.0, self.t_step])  # 2nd traj.
         vf = np.zeros_like(vw1)
-        coeff3, tf3 = self.get_cubic_spline(q0=self.qw2, qf=self.qf, v0=vw2, vf=vf)  # 3rd traj.
+        coeff3, tf3 = self.get_cubic_spline(q0=self.qw2, qf=self.qf, v0=vw2, vf=vf,
+                                            max_vel=self.max_vel, max_acc=self.max_acc, tf_range=[0.01, 2.0, self.t_step])  # 3rd traj.
 
         t1 = np.arange(start=0.0, stop=tf1, step=self.t_step).reshape(-1,1)
         traj1 = coeff1[0]*t1**3 + coeff1[1]*t1**2 + coeff1[2]*t1 + coeff1[3]
@@ -69,49 +73,54 @@ class CubicOptimizer_2wp:
 
     def get_cost(self, vw1, vw2):
         v0 = np.zeros_like(vw1)
-        _, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw1, v0=v0, vf=vw1)     # 1st traj.
-        _, tf2 = self.get_cubic_spline(q0=self.qw1, qf=self.qw2, v0=vw1, vf=vw2)   # 2nd traj.
+        _, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw1, v0=v0, vf=vw1,
+                                       max_vel=self.max_vel, max_acc=self.max_acc, tf_range=[0.3, 2.0, 0.02])  # 1st traj.
+        _, tf2 = self.get_cubic_spline(q0=self.qw1, qf=self.qw2, v0=vw1, vf=vw2,
+                                       max_vel=self.max_vel, max_acc=self.max_acc, tf_range=[0.3, 2.0, 0.02])  # 2nd traj.
         vf = np.zeros_like(vw1)
-        _, tf3 = self.get_cubic_spline(q0=self.qw2, qf=self.qf, v0=vw2, vf=vf)     # 3rd traj.
+        _, tf3 = self.get_cubic_spline(q0=self.qw2, qf=self.qf, v0=vw2, vf=vf,
+                                       max_vel=self.max_vel, max_acc=self.max_acc, tf_range=[0.3, 2.0, 0.02])  # 3rd traj.
         return tf1+tf2+tf3
 
     def get_gradient(self, k1, k2):
-        dk1 = 0.03   # perturbation
-        dk2 = 0.03
+        dk1 = 0.15   # perturbation
+        dk2 = 0.15
         cost_grad_k1 = (self.get_cost((k1+dk1)*self.dqw1, k2*self.dqw2) - self.get_cost((k1-dk1)*self.dqw1, k2*self.dqw2))/(2*dk1)
         cost_grad_k2 = (self.get_cost(k1*self.dqw1, (k2+dk2)*self.dqw2) - self.get_cost(k1*self.dqw1, (k2-dk2)*self.dqw2))/(2*dk2)
         return [cost_grad_k1, cost_grad_k2]
 
     def optimize(self, q0, qw1, qw2, qf, dqw1, dqw2, max_vel, max_acc, t_step=0.01, print_out=False, visualize=False):
-        self.q0 = np.array(q0)
-        self.qw1 = np.array(qw1)
-        self.qw2 = np.array(qw2)
-        self.qf = np.array(qf)
-        self.dqw1 = np.array(dqw1) / np.linalg.norm(dqw1)    # normalized gradient (direction)
-        self.dqw2 = np.array(dqw2) / np.linalg.norm(dqw2)
-        self.max_vel = np.array(max_vel)
-        self.max_acc = np.array(max_acc)
-        self.t_step = np.array(t_step)
+        self.q0 = np.array(q0).squeeze()
+        self.qw1 = np.array(qw1).squeeze()
+        self.qw2 = np.array(qw2).squeeze()
+        self.qf = np.array(qf).squeeze()
+        self.dqw1 = np.array(dqw1).squeeze() / np.linalg.norm(dqw1)    # normalized gradient (direction)
+        self.dqw2 = np.array(dqw2).squeeze() / np.linalg.norm(dqw2)
+        self.max_vel = np.array(max_vel).squeeze()
+        self.max_acc = np.array(max_acc).squeeze()
+        self.t_step = np.array(t_step).squeeze()
 
         # initial guess
         K = np.array([0.0, 0.0])
-        alpha = 0.02
-        tf_mins = np.zeros(10)
+        alpha = 0.06
+        tf_mins = []
+        Ks = []
         count = 0
         while True:
             f_grad = np.array(self.get_gradient(K[0], K[1]))
             K = K - alpha*f_grad
             tf_min = self.get_cost(K[0]*self.dqw1, K[1]*self.dqw2)
+            tf_mins.append(tf_min)
+            Ks.append(K)
             if print_out:
-                print("K=", K)
-                print("tf_min=", tf_min)
-            tf_mins = np.insert(tf_mins, 0, tf_min)
-            tf_mins = np.delete(tf_mins, -1)
-            tf_mins_prev = np.insert(tf_mins, 0, tf_mins[0])
-            tf_mins_prev = np.delete(tf_mins_prev, -1, axis=0)
-            diff = abs(tf_mins - tf_mins_prev)
-            if np.all(diff <= 0.04) and count > 10:
-                traj, t = self.combine_trajectory(K[0]*self.dqw1, K[1]*self.dqw2)
+                print (tf_min, K, count)
+            if count > 50:
+                Ks = np.array(Ks)
+                tf_mins = np.array(tf_mins)
+                arg = np.argmin(tf_mins)
+                if print_out:
+                    print("selected: ", tf_mins[arg], Ks[arg])
+                traj, t = self.combine_trajectory(Ks[arg][0]*self.dqw1, Ks[arg][1]*self.dqw2)
                 if visualize:
                     pos = traj
                     pos_prev = np.insert(pos, 0, pos[0], axis=0)
@@ -156,5 +165,5 @@ class CubicOptimizer_2wp:
         plt.show()
 
 if __name__ == "__main__":
-    opt = CubicOptimizer()
+    opt = CubicOptimizer_2wp()
     # opt.search_min(q0, qw1, qw2, qf, qw1_grad, qw2_grad)

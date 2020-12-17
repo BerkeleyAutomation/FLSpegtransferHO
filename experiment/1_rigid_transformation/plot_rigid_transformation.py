@@ -2,8 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 import FLSpegtransfer.utils.CmnUtil as U
+from FLSpegtransfer.path import *
 
-root = '/home/hwangmh/pycharmprojects/FLSpegtransfer/'
 plt.style.use('seaborn-whitegrid')
 # plt.style.use('bmh')
 plt.rc('font', size=12)          # controls default text sizes
@@ -16,8 +16,8 @@ plt.rc('figure', titlesize=10)  # fontsize of the figure title
 
 
 file_path = root + 'experiment/1_rigid_transformation/'
-pos_des = np.load(file_path + 'pos_des.npy')  # robot's position
-pos_act = np.load(file_path + 'pos_act.npy')  # position measured by camera
+pos_des = np.load(file_path + 'pos_cmd.npy')  # robot's position
+pos_act = np.load(file_path + 'pos_phy.npy')  # position measured by camera
 T = U.get_rigid_transform(np.array(pos_act), np.array(pos_des))
 # T = np.load(file_path + 'Trc.npy')  # rigid transform from cam to rob
 R = T[:3, :3]

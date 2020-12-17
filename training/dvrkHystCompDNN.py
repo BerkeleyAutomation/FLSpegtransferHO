@@ -98,26 +98,26 @@ class dvrkHystCompDNN:
     def load_models(self, arm_name):
         models_q123 = []
         if arm_name == '/PSM1':
-            dir = "models/new1_PSM1/"
+            dir = "models/grey1_PSM1/"
         elif arm_name == '/PSM2':
-            dir = "models/new2_PSM2/"
+            dir = "models/grey2_PSM2/"
         else:
             raise ValueError
-        filename = root + dir + "model_new_random_smooth_q123.out"
+        filename = root + dir + "model_random_smooth_q123.out"
         for i in range(5):
             model = NNModel(input_dim=3, output_dim=3)
             model.load_model(filename+str(i))
             models_q123.append(model)
 
         models_q4 = []
-        filename = root + dir + "model_new_random_smooth_q4.out"
+        filename = root + dir + "model_random_smooth_q4.out"
         for i in range(5):
             model = NNModel(input_dim=1, output_dim=1)
             model.load_model(filename + str(i))
             models_q4.append(model)
 
         models_q56 = []
-        filename = root + dir + "model_new_random_smooth_q56.out"
+        filename = root + dir + "model_random_smooth_q56.out"
         for i in range(10):
             model = NNModel(input_dim=self.H*2, output_dim=2)
             model.load_model(filename + str(i))
@@ -133,7 +133,8 @@ class dvrkHystCompDNN:
         if q_cmd == []:
             return []
         # predict q1, q2, q3, q4
-        q_pred123 = self.model_out(q_cmd[:3], self.models_q123)
+        # q_pred123 = self.model_out(q_cmd[:3], self.models_q123)
+        q_pred123 = q_cmd[:3]
         q_pred4 = self.model_out([q_cmd[3]], self.models_q4)
 
         # predict q5,q6

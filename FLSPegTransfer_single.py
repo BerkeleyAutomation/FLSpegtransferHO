@@ -4,37 +4,36 @@ from FLSpegtransfer.vision.BallDetectionRGBD import BallDetectionRGBD
 from FLSpegtransfer.vision.GraspingPose3D import GraspingPose3D
 from FLSpegtransfer.vision.VisualizeDetection import VisualizeDetection
 from FLSpegtransfer.vision.PegboardCalibration import PegboardCalibration
-from FLSpegtransfer.motion.dvrkPegTransferMotion import dvrkPegTransferMotion
-from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
+from FLSpegtransfer.motion.dvrkPegTransferMotionSingleArm import dvrkPegTransferMotionSingleArm
 from FLSpegtransfer.path import *
 import numpy as np
 
 
 class FLSPegTransfer:
-    def __init__(self, use_simulation=True, which_camera='inclined'):
+    def __init__(self, use_simulation=True, use_controller=True, use_optimization=True, which_camera='inclined', which_arm='PSM1'):
         self.use_simulation = use_simulation
 
         # load transform
-        self.Trc = np.load(root + 'calibration_files/Trc_' + which_camera + '_PSM1.npy')  # robot to camera
+        self.Trc = np.load(root + 'calibration_files/Trc_' + which_camera + '_'+which_arm+'.npy')  # robot to camera
         self.Tpc = np.load(root + 'calibration_files/Tpc_' + which_camera + '.npy')  # pegboard to camera
 
         # import modules
-        if use_simulation:
+        if self.use_simulation:
             pass
         else:
             self.zivid = ZividCapture(which_camera=which_camera)
             self.zivid.start()
         self.block = BlockDetection3D(self.Tpc)
         self.ball = BallDetectionRGBD(Trc=self.Trc, Tpc=self.Tpc, which_camera=which_camera)
-        self.gp = GraspingPose3D()
+        self.gp = GraspingPose3D(dist_gps=5.5, dist_pps=5.5, which_arm=which_arm)
         self.vd = VisualizeDetection()
         self.pegboard = PegboardCalibration()
-        self.dvrk_motion = dvrkPegTransferMotion()
-        self.dvrk_model = dvrkKinematics()
+        self.dvrk_motion\
+            = dvrkPegTransferMotionSingleArm(use_controller=use_controller, use_optimization=use_optimization, which_arm=which_arm)
 
         # action ordering
         self.action_list = np.array([[1, 7], [0, 6], [3, 8], [2, 9], [5, 11], [4, 10],  # left to right
-                                     [7, 1], [6, 0], [8, 3], [9, 2], [11, 5], [10, 4]])  # right to left
+                                     [7, 1], [6, 0], [8, 3], [9, 2], [11, 5], [10, 4]])  # right to leftz
         self.action_order = 0
 
         # data members
@@ -78,23 +77,15 @@ class FLSPegTransfer:
         gp_pick = self.gp.pose_grasping
         gp_place = self.gp.pose_placing
 
-        # pick-up motion
+        # pick-up and place motion
         gp_pick_robot = self.transform_task2robot(gp_pick[1:])  # [x,y,z]
-        self.dvrk_motion.pick_above_block(pos=gp_pick_robot, rot=gp_pick[0])
-
-        # visual servoing prior to pick-up
-        self.dvrk_motion.pick_block(pos=gp_pick_robot, rot=gp_pick[0])
-
-        # place motion
         gp_place_robot = self.transform_task2robot(gp_place[1:])
-        self.dvrk_motion.place_above_block(pos=gp_place_robot, rot=gp_place[0])
-
-        # visual servoing prior to drop
-        # delta, seen = self.place_servoing()
-        # if seen == True:    # if there is a block,
-        #     delta_robot = self.transform_task2robot(delta, delta=True)
-        delta_robot = np.array([0.0, 0.0, 0.0])
-        self.dvrk_motion.drop_block(pos=gp_place_robot + delta_robot, rot=gp_place[0])
+        if self.action_order == 0 or self.action_order == 6:
+            self.dvrk_motion.go_pick(pos_pick=gp_pick_robot, rot_pick=gp_pick[0])
+        else:
+            self.dvrk_motion.return_to_peg(pos_pick=gp_pick_robot, rot_pick=gp_pick[0])
+        self.dvrk_motion.transfer_block(pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
+                                        pos_place=gp_place_robot, rot_place=gp_place[0])
 
     def place_servoing(self):
         # get current position
@@ -115,15 +106,15 @@ class FLSPegTransfer:
         return delta, seen
 
     def update_images(self):
-        # if self.use_simulation:
-        if self.action_order <= 5:
-            self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined.npy')
-            self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined.npy')
+        if self.use_simulation:
+            if self.action_order <= 5:
+                self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined.npy')
+                self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined.npy')
+            else:
+                self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined_rhp.npy')
+                self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined_rhp.npy')
         else:
-            self.color = np.load('record/peg_transfer_kit_capture/img_color_inclined_rhp.npy')
-            self.point = np.load('record/peg_transfer_kit_capture/img_point_inclined_rhp.npy')
-        # else:
-        #     self.color, _, self.point = self.zivid.capture_3Dimage(color='BGR')
+            self.color, _, self.point = self.zivid.capture_3Dimage(color='BGR')
 
     def main(self):
         while True:
@@ -176,6 +167,12 @@ class FLSPegTransfer:
                     # visualize
                     # pnt_grasping = np.array(self.gp.pose_grasping)[1:]
                     # self.vd.plot3d(pnt_blk_pick, pnt_mask_pick, self.block.pnt_pegs, [pnt_grasping])
+
+                    # visualize all blocks and all grasping points
+                    self.block.find_block_all(img_color=self.color, img_point=self.point)
+                    self.gp.find_grasping_pose_all(pose_blks=self.block.pose_blks, peg_points=self.block.pnt_pegs)
+                    pnt_graspings = np.array(self.gp.pose_grasping)[:6, 2:5]
+                    self.vd.plot3d(self.block.pnt_blks, self.block.pnt_masks, self.block.pnt_pegs, pnt_graspings)
                     self.state.insert(0, 'move_block')
                 else:
                     print('No block to move was detected. Skip this order.')
@@ -186,8 +183,8 @@ class FLSPegTransfer:
                 print('')
                 print('* State:', self.state[0])
                 self.move_blocks()
-                # if self.action_order == 5:
-                self.dvrk_motion.move_origin()
+                if self.action_order == 5:
+                    self.dvrk_motion.move_origin()
                 self.action_order += 1
                 self.state.insert(0, 'update_image')
 
@@ -196,5 +193,6 @@ class FLSPegTransfer:
                 self.dvrk_motion.move_origin()
                 exit()
 
+
 if __name__ == '__main__':
-    FLS = FLSPegTransfer(use_simulation=True, which_camera='inclined')
+    FLS = FLSPegTransfer(use_simulation=True, use_controller=True, use_optimization=True, which_camera='inclined', which_arm='PSM1')

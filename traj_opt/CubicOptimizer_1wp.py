@@ -29,8 +29,8 @@ class CubicOptimizer_1wp:
         v0 = np.array(v0)
         vf = np.array(vf)
         if tf_range is None:
-            tf_range = [0.01, 5.0]
-        tf = np.arange(start=tf_range[0], stop=tf_range[1], step=0.01).reshape(-1,1)
+            tf_range = [0.1, 2.0, 0.01]
+        tf = np.arange(start=tf_range[0], stop=tf_range[1], step=tf_range[2]).reshape(-1,1)
         a = (vf * tf + v0 * tf + 2 * q0 - 2 * qf) / tf ** 3
         b = (vf - v0) / (2 * tf) - 3 / 2 * a * tf
         c = v0
@@ -49,9 +49,9 @@ class CubicOptimizer_1wp:
 
     def combine_trajectory(self, vw):
         v0 = np.zeros_like(vw)
-        coeff1, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw, v0=v0, vf=vw)  # 1st traj.
+        coeff1, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw, v0=v0, vf=vw, tf_range=[0.01, 2.0, self.t_step])  # 1st traj.
         vf = np.zeros_like(vw)
-        coeff2, tf2 = self.get_cubic_spline(q0=self.qw, qf=self.qf, v0=vw, vf=vf)  # 2nd traj.
+        coeff2, tf2 = self.get_cubic_spline(q0=self.qw, qf=self.qf, v0=vw, vf=vf, tf_range=[0.01, 2.0, self.t_step])  # 2nd traj.
 
         t1 = np.arange(start=0.0, stop=tf1, step=self.t_step).reshape(-1,1)
         traj1 = coeff1[0]*t1**3 + coeff1[1]*t1**2 + coeff1[2]*t1 + coeff1[3]
@@ -64,44 +64,46 @@ class CubicOptimizer_1wp:
 
     def get_cost(self, vw):
         v0 = np.zeros_like(vw)
-        _, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw, v0=v0, vf=vw)     # 1st traj.
+        _, tf1 = self.get_cubic_spline(q0=self.q0, qf=self.qw, v0=v0, vf=vw, tf_range=[0.3, 2.0, 0.02])     # 1st traj.
         vf = np.zeros_like(vw)
-        _, tf2 = self.get_cubic_spline(q0=self.qw, qf=self.qf, v0=vw, vf=vf)     # 2nd traj.
+        _, tf2 = self.get_cubic_spline(q0=self.qw, qf=self.qf, v0=vw, vf=vf, tf_range=[0.3, 2.0, 0.02])     # 2nd traj.
         return tf1+tf2
 
     def get_gradient(self, k):
-        dk = 0.03   # perturbation
+        dk = 0.04   # perturbation
         cost_grad = (self.get_cost((k+dk)*self.dqw) - self.get_cost((k-dk)*self.dqw))/(2*dk)
         return cost_grad
 
     def optimize(self, q0, qw, qf, dqw, max_vel, max_acc, t_step=0.01, print_out=False, visualize=False):
-        self.q0 = np.array(q0)
-        self.qw = np.array(qw)
-        self.qf = np.array(qf)
-        self.dqw = np.array(dqw) / np.linalg.norm(dqw)    # normalized gradient (direction)
-        self.max_vel = np.array(max_vel)
-        self.max_acc = np.array(max_acc)
-        self.t_step = np.array(t_step)
+        self.q0 = np.array(q0).squeeze()
+        self.qw = np.array(qw).squeeze()
+        self.qf = np.array(qf).squeeze()
+        self.dqw = np.array(dqw).squeeze() / np.linalg.norm(dqw)    # normalized gradient (direction)
+        self.max_vel = np.array(max_vel).squeeze()
+        self.max_acc = np.array(max_acc).squeeze()
+        self.t_step = np.array(t_step).squeeze()
 
         # initial guess
         K = 0.0
-        alpha = 0.02
-        tf_mins = np.zeros(10)
+        tf_mins = []
+        Ks = []
+        alpha = 0.03
         count = 0
         while True:
             f_grad = np.array(self.get_gradient(K))
             K = K - alpha*f_grad
             tf_min = self.get_cost(K*self.dqw)
+            tf_mins.append(tf_min)
+            Ks.append(K)
             if print_out:
-                print("K=", K)
-                print("tf_min=", tf_min)
-            tf_mins = np.insert(tf_mins, 0, tf_min)
-            tf_mins = np.delete(tf_mins, -1)
-            tf_mins_prev = np.insert(tf_mins, 0, tf_mins[0])
-            tf_mins_prev = np.delete(tf_mins_prev, -1, axis=0)
-            diff = abs(tf_mins - tf_mins_prev)
-            if np.all(diff <= 0.02) and count > 10:
-                traj, t = self.combine_trajectory(K*self.dqw)
+                print (tf_min, K, count)
+            if count > 100:
+                Ks = np.array(Ks)
+                tf_mins = np.array(tf_mins)
+                arg = np.argmin(tf_mins)
+                if print_out:
+                    print("selected: ", tf_mins[arg], Ks[arg])
+                traj, t = self.combine_trajectory(Ks[arg]*self.dqw)
                 if visualize:
                     pos = traj
                     pos_prev = np.insert(pos, 0, pos[0], axis=0)

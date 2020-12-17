@@ -22,7 +22,7 @@ def format_dataset(q_des, q_act, H):
     return x, y
 
 # load data
-dir = "dataset/random_smooth_new2_PSM2/"
+dir = "dataset/random_smooth_grey1_PSM1/"
 q_cmd = np.load(root + dir + "q_cmd.npy")
 q_phy = np.load(root + dir + "q_phy.npy")
 print ("data shape: ", np.shape(q_cmd))
@@ -32,8 +32,8 @@ print ("data shape: ", np.shape(q_cmd))
 # plot_hysteresis(q_cmd, q_phy, show_window=True)
 
 # training dataset
-H_upper = [np.deg2rad(-7), np.deg2rad(17), np.deg2rad(2)]
-H_lower = [np.deg2rad(-13), np.deg2rad(-10), np.deg2rad(-30)]
+# H_upper = [np.deg2rad(-7), np.deg2rad(17), np.deg2rad(2)]
+# H_lower = [np.deg2rad(-13), np.deg2rad(-10), np.deg2rad(-30)]
 x, y = format_dataset(q_cmd[:, 4:], q_phy[:, 4:], H=6)
 
 # train model
@@ -54,5 +54,5 @@ y_pred = np.concatenate((dummy, y_pred), axis=1)
 # plot_joint(x[:200], y[:200], y_pred[:200], show_window=False)
 # plot_hysteresis(x, y_pred, show_window=True)
 
-i=4
-model.save('model_new_random_smooth_q56.out'+str(i))
+i=6
+model.save(root+'/models/grey1_PSM1/model_random_smooth_q56.out'+str(i))

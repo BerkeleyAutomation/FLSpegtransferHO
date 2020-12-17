@@ -4,11 +4,20 @@ import time
 import matplotlib.pyplot as plt
 from FLSpegtransfer.vision.ZividCapture import ZividCapture
 from FLSpegtransfer.vision.BallDetectionRGBD import BallDetectionRGBD
-from FLSpegtransfer.motion.dvrkDualArm import dvrkDualArm
+from FLSpegtransfer.motion.dvrkArm import dvrkArm
 from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
 from FLSpegtransfer.path import *
 import FLSpegtransfer.motion.dvrkVariables as dvrkVar
 import FLSpegtransfer.utils.CmnUtil as U
+plt.style.use('seaborn-whitegrid')
+# plt.style.use('bmh')
+plt.rc('font', size=12)          # controls default text sizes
+plt.rc('axes', titlesize=20)     # fontsize of the axes title
+plt.rc('axes', labelsize=15)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=13)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=13)    # fontsize of the tick labels
+plt.rc('legend', fontsize=17)    # legend fontsize
+plt.rc('figure', titlesize=10)  # fontsize of the figure title
 
 
 def plot_trajectory(joint, pos):
@@ -25,9 +34,9 @@ def plot_trajectory(joint, pos):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
     plt.plot(pos[:, 0], pos[:, 1], pos[:, 2], 'b.-')
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
+    ax.set_xlabel('x (m)')
+    ax.set_ylabel('y (m)')
+    ax.set_zlabel('z (m)')
     print('data length: ', len(joint))
     plt.show()
 
@@ -54,7 +63,7 @@ def plot_trajectory(joint, pos):
     plt.show()
 
 
-def pose_estimation(pbr, pbg, pbb, pby, use_Trc):    # Find tool position, joint angles
+def pose_estimation(pbr, pbg, pbb, pby, use_Trc, which_arm):    # Find tool position, joint angles
     pt = []
     q_phy = []
     if len(pbr) < 2:
@@ -73,7 +82,7 @@ def pose_estimation(pbr, pbg, pbb, pby, use_Trc):    # Find tool position, joint
             elif temp.count([]) >= 2:
                 qp4=0.0; qp5=0.0; qp6=0.0
             else:
-                Rm = bd.find_tool_orientation(pbr[2], pbg, pbb, pby)  # orientation of the marker
+                Rm = bd.find_tool_orientation(pbr[2], pbg, pbb, pby, which_arm)  # orientation of the marker
                 qp4, qp5, qp6 = dvrkKinematics.ik_orientation(qp1, qp2, Rm)
             q_phy = [qp1, qp2, qp3, qp4, qp5, qp6]
         else:
@@ -84,12 +93,12 @@ def pose_estimation(pbr, pbg, pbb, pby, use_Trc):    # Find tool position, joint
 # configurations
 use_Trc = True
 which_camera = 'inclined'
-which_arm = 'PSM2'
+which_arm = 'PSM1'
 
 # define objects
 zivid = ZividCapture(which_camera=which_camera)
 zivid.start()
-dvrk = dvrkDualArm()
+dvrk = dvrkArm('/'+which_arm)
 if use_Trc:
     Trc = np.load(root+'calibration_files/Trc_' + which_camera + '_' + which_arm + '.npy')
 else:
@@ -98,12 +107,12 @@ Tpc = np.load(root+'calibration_files/Tpc_' + which_camera + '.npy')
 bd = BallDetectionRGBD(Trc=Trc, Tpc=Tpc, which_camera=which_camera)
 
 # Load & plot trajectory
-root = '/home/davinci/pycharmprojects/FLSpegtransfer/'
 if use_Trc:
     # filename = root + 'experiment/0_trajectory_extraction/' + which_arm + '/training_insertion_sampled_2000.npy'
     filename = root + 'experiment/0_trajectory_extraction/' + which_arm + '/training_random.npy'
 else:
-    filename = root + 'experiment/0_trajectory_extraction/' + which_arm + '/short_random.npy'
+    # filename = root + 'experiment/0_trajectory_extraction/' + which_arm + '/short_random.npy'
+    filename = root + 'experiment/0_trajectory_extraction/' + which_arm + '/random_sampled_500.npy'
 joint_traj = np.load(filename)
 pos_traj = []
 for q in joint_traj:
@@ -121,6 +130,8 @@ pos_cmd_ = []
 pos_phy_ = []
 pt = []
 for q_cmd in joint_traj:
+    if q_cmd[2] < 0.125:
+        continue
     if use_Trc:
         pass
     else:
@@ -128,11 +139,11 @@ for q_cmd in joint_traj:
         q_cmd[4] = 0.0
         q_cmd[5] = 0.0
     if which_arm == 'PSM1':
-        dvrk.set_jaw(jaw1=np.deg2rad([0]))
-        dvrk.set_joint(joint1=q_cmd)
+        dvrk.set_jaw_interpolate(jaw=np.deg2rad([-20]))
+        dvrk.set_joint_interpolate(joint=q_cmd)
     elif which_arm == 'PSM2':
-        dvrk.set_jaw(jaw2=np.deg2rad([0]))
-        dvrk.set_joint(joint2=q_cmd)
+        dvrk.set_jaw_interpolate(jaw=np.deg2rad([-20]))
+        dvrk.set_joint_interpolate(joint=q_cmd)
 
     # Capture image from Zivid
     color, _, point = zivid.capture_3Dimage(color='BGR')
@@ -147,7 +158,7 @@ for q_cmd in joint_traj:
     pby = bd.find_balls(color, point, 'yellow', nb_sphere=1, visualize=False)
 
     # pose estimation
-    pt, q_phy = pose_estimation(pbr, pbg, pbb, pby, use_Trc)
+    pt, q_phy = pose_estimation(pbr, pbg, pbb, pby, use_Trc, which_arm)
 
     # overlay
     color = bd.overlay_ball(color, pbr)
@@ -183,6 +194,8 @@ for q_cmd in joint_traj:
     cv2.imshow("images", color)
     cv2.waitKey(1) & 0xFF
     # cv2.waitKey(0)
+    np.save('color_overlayed_'+str(len(q_cmd_)), color)
+    np.save('point_'+str(len(q_cmd_)), point)
 
 # Save data to a file
 if use_Trc:

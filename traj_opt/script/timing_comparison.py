@@ -53,9 +53,12 @@ def calculate_dot(q_pos, dt):
     q_acc = (q_vel - q_vel_prev) / dt
     return q_vel, q_acc
 
-dvrk = dvrkArm('/PSM1')
+# dvrk = dvrkArm('/PSM1')
 traj = np.load("traj.npy", allow_pickle=True)
 traj_opt = np.load("traj_opt_cubic.npy", allow_pickle=True)
+cal_time = np.load("cal_time.npy")
+cal_time_opt_cubic = np.load("cal_time_opt_cubic.npy")
+cal_time_opt_QP = np.load("cal_time_opt_QP.npy")
 
 # # run motion (linear)
 # for tt in traj:
@@ -77,12 +80,14 @@ traj_opt = np.load("traj_opt_cubic.npy", allow_pickle=True)
 # plot
 time_diff = 0.0
 dt = 0.01
+time_transfer = []
+time_transfer_opt = []
 for qs, qs_opt in zip(traj, traj_opt):
     # for q in qs:
     #     print (len(q))
-    qs = np.concatenate(qs)
-    print (len(qs), len(qs_opt), round((len(qs)-len(qs_opt))*0.01, 2))
-    time_diff += (len(qs)-len(qs_opt))*0.01
+    time_transfer.append(len(qs) * 0.01)
+    time_transfer_opt.append(len(qs_opt)*0.01)
+    print ("Transfer time: ", len(qs)*0.01, len(qs_opt)*0.01)
 
     # plot
     t = np.arange(start=0, stop=len(qs))*dt
@@ -94,6 +99,10 @@ for qs, qs_opt in zip(traj, traj_opt):
     # print (np.max(qs_opt_vel, axis=0))
     # print (np.max(qs_opt_acc, axis=0))
     # print ("")
-    plot_joint(t, qs, qs_vel, qs_acc, t_opt, qs_opt, qs_opt_vel, qs_opt_acc)
+    # plot_joint(t, qs, qs_vel, qs_acc, t_opt, qs_opt, qs_opt_vel, qs_opt_acc)
     # plot_pose(t, ps, ps_vel, ps_acc, t_opt, ps_opt, ps_opt_vel, ps_opt_acc)
-print (time_diff)
+print("Ave. cal. time(s): ", np.average(cal_time), np.average(cal_time_opt_cubic))
+print("Std. cal. time(s): ", np.std(cal_time), np.std(cal_time_opt_cubic))
+print("Ave. transfer. time(s): ", np.average(time_transfer), np.average(time_transfer_opt))
+print("Std. transfer. time(s): ", np.std(time_transfer), np.std(time_transfer_opt))
+print("Diff. of completion time(s): ", (np.average(time_transfer)-np.average(time_transfer_opt))*len(traj))

@@ -1,0 +1,2 @@
+#!/bin/bash
+rosbag record /dvrk/PSM1/state_joint_current /dvrk/PSM2/state_joint_current

@@ -3,10 +3,10 @@ import numpy as np
 
 
 class GraspingPose3D:
-    def __init__(self, which_arm='PSM1'):
+    def __init__(self, dist_gps, dist_pps, which_arm='PSM1'):
         # sample grasping poses
-        self.sample_gps = self.sample_grasping_pose(gp_number=2, dist_center=5.3, dist_gp=2.3, which_arm=which_arm)
-        self.sample_pps = self.sample_grasping_pose(gp_number=2, dist_center=5.3, dist_gp=2.3, which_arm=which_arm)
+        self.sample_gps = self.sample_grasping_pose(gp_number=2, dist_center=dist_gps, dist_gp=2.5, which_arm=which_arm)
+        self.sample_pps = self.sample_grasping_pose(gp_number=2, dist_center=dist_pps, dist_gp=2.5, which_arm=which_arm)
         self.which_arm = which_arm
         self._pose_grasping = []
         self._pose_placing = []
@@ -23,13 +23,13 @@ class GraspingPose3D:
     @pose_grasping.setter
     def pose_grasping(self, value):
         self._pose_grasping = value
-        print ("(" + self.which_arm + ") " + "grasping pose updated: ", value)
+        # print ("(" + self.which_arm + ") " + "grasping pose updated: ", value)
 
     @pose_grasping_arg.setter
     def pose_grasping_arg(self, value):
         self._pose_grasping_arg = value
-        print ('')
-        print ("(" + self.which_arm + ") " + "grasping pose arg updated: ", value)
+        # print ('')
+        # print ("(" + self.which_arm + ") " + "grasping pose arg updated: ", value)
 
     @property
     def pose_placing(self):
@@ -38,7 +38,7 @@ class GraspingPose3D:
     @pose_placing.setter
     def pose_placing(self, value):
         self._pose_placing = value
-        print("(" + self.which_arm + ") " + "placing pose updated: ", value)
+        # print("(" + self.which_arm + ") " + "placing pose updated: ", value)
 
     def sample_grasping_pose(self, gp_number, dist_center, dist_gp, which_arm):
         group1 = []

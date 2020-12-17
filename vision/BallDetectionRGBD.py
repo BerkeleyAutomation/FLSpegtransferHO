@@ -280,49 +280,89 @@ class BallDetectionRGBD:
         return p_pitch    # (mm), w.r.t. camera base coordinate
 
     # Get orientation from three ball positions w.r.t. robot base coordinate
-    def find_tool_orientation(self, pbr, pbg, pbb, pby):
+    def find_tool_orientation(self, pbr, pbg, pbb, pby, which_arm):
         pbr = np.array(pbr) # red
         pbg = np.array(pbg) # green
         pbb = np.array(pbb) # blue
         pby = np.array(pby) # yellow
 
         pts1 = np.array([[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0]])  # base pose w.r.t. robot coordinate
+
         # normalized direction vectors
-        if pbr.size==0:   # red ball is occluded
-            pborg = (pbg + pby)/2
-            v1 = self.Rrc.dot((pborg-pbb)[0:3])
-            v1 = v1/np.linalg.norm(v1)
-            v2 = self.Rrc.dot((pbg-pby)[0:3])
-            v2 = v2/np.linalg.norm(v2)
-            v3 = np.cross(v1,v2)/(np.linalg.norm(v1)*np.linalg.norm(v2))
-        elif pbg.size==0:   # green ball is occluded
-            pborg = (pbr + pbb) / 2
-            v1 = self.Rrc.dot((pbr - pbb)[0:3])
-            v1 = v1 / np.linalg.norm(v1)
-            v2 = self.Rrc.dot((pborg - pby)[0:3])
-            v2 = v2 / np.linalg.norm(v2)
-            v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-        elif pbb.size==0:   # blue ball is occluded
-            pborg = (pbg + pby) / 2
-            v1 = self.Rrc.dot((pbr - pborg)[0:3])
-            v1 = v1 / np.linalg.norm(v1)
-            v2 = self.Rrc.dot((pbg - pby)[0:3])
-            v2 = v2 / np.linalg.norm(v2)
-            v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-        elif pby.size==0:   # yellow ball is occluded
-            pborg = (pbr + pbb) / 2
-            v1 = self.Rrc.dot((pbr - pbb)[0:3])
-            v1 = v1 / np.linalg.norm(v1)
-            v2 = self.Rrc.dot((pbg - pborg)[0:3])
-            v2 = v2 / np.linalg.norm(v2)
-            v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        if which_arm=='PSM1':
+            if pbr.size==0:   # red ball is occluded
+                pborg = (pbg + pby)/2
+                v1 = self.Rrc.dot((pborg-pbb)[0:3])
+                v1 = v1/np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pbg-pby)[0:3])
+                v2 = v2/np.linalg.norm(v2)
+                v3 = np.cross(v1,v2)/(np.linalg.norm(v1)*np.linalg.norm(v2))
+            elif pbg.size==0:   # green ball is occluded
+                pborg = (pbr + pbb) / 2
+                v1 = self.Rrc.dot((pbr - pbb)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pborg - pby)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            elif pbb.size==0:   # blue ball is occluded
+                pborg = (pbg + pby) / 2
+                v1 = self.Rrc.dot((pbr - pborg)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pbg - pby)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            elif pby.size==0:   # yellow ball is occluded
+                pborg = (pbr + pbb) / 2
+                v1 = self.Rrc.dot((pbr - pbb)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pbg - pborg)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            else:
+                pborg = (pbg + pby) / 2
+                v1 = self.Rrc.dot((pbr - pborg)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pbg - pby)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        elif which_arm=='PSM2':
+            if pbr.size==0:   # red ball is occluded
+                pborg = (pbg + pby)/2
+                v1 = self.Rrc.dot((pbb-pborg)[0:3])
+                v1 = v1/np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pby-pbg)[0:3])
+                v2 = v2/np.linalg.norm(v2)
+                v3 = np.cross(v1,v2)/(np.linalg.norm(v1)*np.linalg.norm(v2))
+            elif pbg.size==0:   # green ball is occluded
+                pborg = (pbr + pbb) / 2
+                v1 = self.Rrc.dot((pbb - pbr)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pby - pborg)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            elif pbb.size==0:   # blue ball is occluded
+                pborg = (pbg + pby) / 2
+                v1 = self.Rrc.dot((pborg - pbr)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pby - pbg)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            elif pby.size==0:   # yellow ball is occluded
+                pborg = (pbr + pbb) / 2
+                v1 = self.Rrc.dot((pbb - pbr)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pborg - pbg)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            else:
+                pborg = (pbg + pby) / 2
+                v1 = self.Rrc.dot((pbb - pborg)[0:3])
+                v1 = v1 / np.linalg.norm(v1)
+                v2 = self.Rrc.dot((pby - pbg)[0:3])
+                v2 = v2 / np.linalg.norm(v2)
+                v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
         else:
-            pborg = (pbg + pby) / 2
-            v1 = self.Rrc.dot((pbr - pborg)[0:3])
-            v1 = v1 / np.linalg.norm(v1)
-            v2 = self.Rrc.dot((pbg - pby)[0:3])
-            v2 = v2 / np.linalg.norm(v2)
-            v3 = np.cross(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+            raise ValueError
         pts2 = np.array([v1, v2, v3])
         pts1 = pts1.T
         pts2 = pts2.T

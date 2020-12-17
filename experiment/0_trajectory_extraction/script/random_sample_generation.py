@@ -76,8 +76,13 @@ def ik_position(pos):  # (m)
 def random_sampling(sample_number):
     q_target = []
     pos_target = []
-    pos_min = [0.06, 0.04, -0.15]
-    pos_max = [0.15, -0.04, -0.10]
+
+    # for PSM1 (for peg transfer)
+    # pos_min = [0.088, -0.04, -0.163]
+    # pos_max = [0.174, 0.027, -0.110]
+    # for PSM2 (for peg transfer)
+    pos_min = [-0.146, -0.048, -0.153]
+    pos_max = [-0.068, 0.032, -0.107]
     q4_range = np.array([-80, 80])*np.pi/180.
     q5_range = np.array([-60, 60])*np.pi/180.
     q6_range = np.array([-60, 60])*np.pi/180.
@@ -94,7 +99,7 @@ def random_sampling(sample_number):
     return q_target, pos_target
 
 if __name__ == "__main__":
-    q_target, pos_target = random_sampling(3000)
+    q_target, pos_target = random_sampling(500)
     print(np.shape(q_target))
     plot_position(pos_target)
     plot_joint(q_target)
