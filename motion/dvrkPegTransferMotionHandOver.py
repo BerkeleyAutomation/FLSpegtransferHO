@@ -1,10 +1,10 @@
-from FLSpegtransfer.motion.dvrkController import dvrkController
-from FLSpegtransfer.motion.dvrkArm import dvrkArm
-from FLSpegtransfer.traj_opt.CubicOptimizer_1wp import CubicOptimizer_1wp
-from FLSpegtransfer.traj_opt.CubicOptimizer_1wp_ import CubicOptimizer_1wp_
-import FLSpegtransfer.motion.dvrkVariables as dvrkVar
-from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
-import FLSpegtransfer.utils.CmnUtil as U
+from FLSpegtransferHO.motion.dvrkController import dvrkController
+from FLSpegtransferHO.motion.dvrkArm import dvrkArm
+from FLSpegtransferHO.traj_opt.CubicOptimizer_1wp import CubicOptimizer_1wp
+from FLSpegtransferHO.traj_opt.CubicOptimizer_1wp_ import CubicOptimizer_1wp_
+import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
+from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransferHO.utils.CmnUtil as U
 import numpy as np
 import threading, time
 

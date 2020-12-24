@@ -2,7 +2,7 @@ from probreg import features
 from probreg import callbacks
 from probreg import l2dist_regs
 import open3d as o3d
-# import open3d.cpu.pybind.pipelines.registration as o3d_reg
+import open3d.cpu.pybind.pipelines.registration as o3d_reg
 import numpy as np
 import copy
 
@@ -113,8 +113,8 @@ class PCLRegistration:
             # Point-to-point ICP
             threshold = [20, 10, 5, 2, 1, 0.5, 0.2]
             for i in range(len(threshold)):
-                # reg_p2p = o3d_reg.registration_icp(src, tgt, threshold[i], np.identity(4), o3d_reg.TransformationEstimationPointToPoint())
-                reg_p2p = o3d.registration.registration_icp(src, tgt, threshold[i], np.identity(4), o3d.registration.TransformationEstimationPointToPoint())
+                reg_p2p = o3d_reg.registration_icp(src, tgt, threshold[i], np.identity(4), o3d_reg.TransformationEstimationPointToPoint())
+                # reg_p2p = o3d.registration.registration_icp(src, tgt, threshold[i], np.identity(4), o3d.registration.TransformationEstimationPointToPoint())
                 src.transform(reg_p2p.transformation)
                 T = copy.deepcopy(reg_p2p.transformation).dot(T)
         return T

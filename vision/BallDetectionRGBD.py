@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
-from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
-import FLSpegtransfer.motion.dvrkVariables as dvrkVar
-from FLSpegtransfer.vision.ZividUtils import ZividUtils
+from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
+from FLSpegtransferHO.vision.ZividUtils import ZividUtils
 
 
 class BallDetectionRGBD:

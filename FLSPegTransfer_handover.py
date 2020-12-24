@@ -1,11 +1,11 @@
-from FLSpegtransfer.vision.ZividCapture import ZividCapture
-from FLSpegtransfer.vision.BlockDetection3D import BlockDetection3D
-from FLSpegtransfer.vision.GraspingPose3D import GraspingPose3D
-from FLSpegtransfer.vision.VisualizeDetection import VisualizeDetection
-from FLSpegtransfer.vision.PegboardCalibration import PegboardCalibration
-from FLSpegtransfer.motion.dvrkPegTransferMotionHandOver import dvrkPegTransferMotionHandOver
-from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
-from FLSpegtransfer.path import *
+from FLSpegtransferHO.vision.ZividCapture import ZividCapture
+from FLSpegtransferHO.vision.BlockDetection3D import BlockDetection3D
+from FLSpegtransferHO.vision.GraspingPose3D import GraspingPose3D
+# from FLSpegtransferHO.vision.VisualizeDetection import VisualizeDetection
+from FLSpegtransferHO.vision.PegboardCalibration import PegboardCalibration
+from FLSpegtransferHO.motion.dvrkPegTransferMotionHandOver import dvrkPegTransferMotionHandOver
+from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
+from FLSpegtransferHO.path import *
 import threading
 import numpy as np
 
@@ -27,7 +27,7 @@ class FLSPegTransferHandover:
         self.block = BlockDetection3D(self.Tpc)
         self.gp = {'PSM1': GraspingPose3D(dist_pps=5.3, dist_gps=5.3, which_arm='PSM1'),
                    'PSM2': GraspingPose3D(dist_pps=4.6, dist_gps=4.6, which_arm='PSM2')}
-        self.vd = VisualizeDetection()
+        # self.vd = VisualizeDetection()
         self.pegboard = PegboardCalibration()
         self.dvrk_motion\
             = dvrkPegTransferMotionHandOver(use_controller=use_controller, use_optimization=use_optimization)
@@ -267,4 +267,4 @@ class FLSPegTransferHandover:
 
 
 if __name__ == '__main__':
-    FLS = FLSPegTransferHandover(use_simulation=False, use_controller=False, use_optimization=False, which_camera='inclined')
+    FLS = FLSPegTransferHandover(use_simulation=True, use_controller=False, use_optimization=False, which_camera='inclined')

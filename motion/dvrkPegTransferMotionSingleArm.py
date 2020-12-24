@@ -1,10 +1,10 @@
-from FLSpegtransfer.motion.dvrkController import dvrkController
-from FLSpegtransfer.motion.dvrkArm import dvrkArm
-from FLSpegtransfer.traj_opt.CubicOptimizer_1wp import CubicOptimizer_1wp
-from FLSpegtransfer.traj_opt.CubicOptimizer_2wp import CubicOptimizer_2wp
-import FLSpegtransfer.motion.dvrkVariables as dvrkVar
-from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
-import FLSpegtransfer.utils.CmnUtil as U
+from FLSpegtransferHO.motion.dvrkController import dvrkController
+from FLSpegtransferHO.motion.dvrkArm import dvrkArm
+from FLSpegtransferHO.traj_opt.CubicOptimizer_1wp import CubicOptimizer_1wp
+from FLSpegtransferHO.traj_opt.CubicOptimizer_2wp import CubicOptimizer_2wp
+import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
+from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransferHO.utils.CmnUtil as U
 import numpy as np
 import threading, time
 
@@ -71,7 +71,7 @@ class dvrkPegTransferMotionSingleArm:
             dqw = np.linalg.inv(J).dot(dvw)
             q_pos, _ = self.motion_opt_1wp.optimize(q0, qw, qf, dqw,
                                                     max_vel=dvrkVar.v_max, max_acc=dvrkVar.a_max,
-                                                    t_step=0.01, print_out=True, visualize=False)
+                                                    t_step=0.01, print_out=False, visualize=False)
         else:
             pos0, quat0 = obj.get_current_pose()
             rot0 = U.quaternion_to_euler(quat0)
@@ -122,7 +122,7 @@ class dvrkPegTransferMotionSingleArm:
             dqw2 = np.linalg.inv(J2).dot(dvw)
             q_pos, _ = self.motion_opt_2wp.optimize(q0, qw1, qw2, qf, dqw1, dqw2,
                                                     max_vel=dvrkVar.v_max, max_acc=dvrkVar.a_max,
-                                                    t_step=0.01, print_out=True, visualize=False)
+                                                    t_step=0.01, print_out=False, visualize=False)
         else:
             # trajectory to transferring block from peg to peg
             pos0 = [pos_pick[0], pos_pick[1], pos_pick[2] + self.offset_grasp[0]]
@@ -184,7 +184,7 @@ class dvrkPegTransferMotionSingleArm:
             dqw2 = np.linalg.inv(J2).dot(dvw)
             q_pos, _ = self.motion_opt_2wp.optimize(q0, qw1, qw2, qf, dqw1, dqw2,
                                                     max_vel=dvrkVar.v_max, max_acc=dvrkVar.a_max,
-                                                    t_step=0.01, print_out=True, visualize=False)
+                                                    t_step=0.01, print_out=False, visualize=False)
         else:
             pos0, quat0 = obj.get_current_pose()
             rot0 = U.quaternion_to_euler(quat0)
