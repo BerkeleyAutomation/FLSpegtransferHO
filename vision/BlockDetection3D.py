@@ -1,8 +1,8 @@
 import cv2
-from FLSpegtransfer.vision.BlockDetection2D import BlockDetection2D
-from FLSpegtransfer.vision.PCLRegistration import PCLRegistration
-import FLSpegtransfer.utils.CmnUtil as U
-from FLSpegtransfer.path import *
+from FLSpegtransferHO.vision.BlockDetection2D import BlockDetection2D
+from FLSpegtransferHO.vision.PCLRegistration import PCLRegistration
+import FLSpegtransferHO.utils.CmnUtil as U
+from FLSpegtransferHO.path import *
 import numpy as np
 import open3d as o3d
 

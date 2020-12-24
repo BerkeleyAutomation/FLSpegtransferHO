@@ -1,11 +1,10 @@
-from FLSpegtransfer.vision.ZividCapture import ZividCapture
-from FLSpegtransfer.vision.BlockDetection3D import BlockDetection3D
-from FLSpegtransfer.vision.GraspingPose3D import GraspingPose3D
-from FLSpegtransfer.vision.VisualizeDetection import VisualizeDetection
-from FLSpegtransfer.vision.PegboardCalibration import PegboardCalibration
-from FLSpegtransfer.motion.dvrkPegTransferMotionDualArm import dvrkPegTransferMotionDualArm
-
-from FLSpegtransfer.path import *
+from FLSpegtransferHO.vision.ZividCapture import ZividCapture
+from FLSpegtransferHO.vision.BlockDetection3D import BlockDetection3D
+from FLSpegtransferHO.vision.GraspingPose3D import GraspingPose3D
+# from FLSpegtransferHO.vision.VisualizeDetection import VisualizeDetection
+from FLSpegtransferHO.vision.PegboardCalibration import PegboardCalibration
+from FLSpegtransferHO.motion.dvrkPegTransferMotionDualArm import dvrkPegTransferMotionDualArm
+from FLSpegtransferHO.path import *
 import numpy as np
 
 
@@ -27,7 +26,7 @@ class FLSPegTransferDualArm:
         self.block = BlockDetection3D(self.Tpc)
         self.gp = {'PSM1': GraspingPose3D(dist_pps=5.5, dist_gps=5.5, which_arm='PSM1'),
                    'PSM2': GraspingPose3D(dist_pps=5.1, dist_gps=5.1, which_arm='PSM2')}
-        self.vd = VisualizeDetection()
+        # self.vd = VisualizeDetection()
         self.pegboard = PegboardCalibration()
         self.dvrk_motion\
             = dvrkPegTransferMotionDualArm(use_controller=use_controller, use_optimization=use_optimization)
@@ -204,13 +203,13 @@ class FLSPegTransferDualArm:
                     # self.vd.plot3d(pnt_blk_pick2, pnt_mask_pick2, self.block.pnt_pegs, [pnt_grasping])
 
                     # visualize all blocks and all grasping points
-                    self.block.find_block_all(img_color=self.color, img_point=self.point)
-                    self.gp['PSM1'].find_grasping_pose_all(pose_blks=self.block.pose_blks, peg_points=self.block.pnt_pegs)
-                    self.gp['PSM2'].find_grasping_pose_all(pose_blks=self.block.pose_blks, peg_points=self.block.pnt_pegs)
-                    pnt_graspings1 = np.array(self.gp['PSM1'].pose_grasping)[:6, 2:5]
-                    pnt_graspings2 = np.array(self.gp['PSM2'].pose_grasping)[:6, 2:5]
-                    pnt_graspings = np.concatenate((pnt_graspings1, pnt_graspings2), axis=0)
-                    self.vd.plot3d(self.block.pnt_blks, self.block.pnt_masks, self.block.pnt_pegs, pnt_graspings1, pnt_graspings2)
+                    # self.block.find_block_all(img_color=self.color, img_point=self.point)
+                    # self.gp['PSM1'].find_grasping_pose_all(pose_blks=self.block.pose_blks, peg_points=self.block.pnt_pegs)
+                    # self.gp['PSM2'].find_grasping_pose_all(pose_blks=self.block.pose_blks, peg_points=self.block.pnt_pegs)
+                    # pnt_graspings1 = np.array(self.gp['PSM1'].pose_grasping)[:6, 2:5]
+                    # pnt_graspings2 = np.array(self.gp['PSM2'].pose_grasping)[:6, 2:5]
+                    # pnt_graspings = np.concatenate((pnt_graspings1, pnt_graspings2), axis=0)
+                    # self.vd.plot3d(self.block.pnt_blks, self.block.pnt_masks, self.block.pnt_pegs, pnt_graspings1, pnt_graspings2)
                     self.state.insert(0, 'move_block')
                 else:
                     print('No block to move was detected. Skip this order.')

@@ -1,3 +1,3 @@
 import getpass
 username = getpass.getuser()
-root = '/home/'+username+'/pycharmprojects/FLSpegtransfer/'
+root = '/home/'+username+'/pycharmprojects/FLSpegtransferHO/'

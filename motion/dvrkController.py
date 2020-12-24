@@ -1,13 +1,13 @@
-from FLSpegtransfer.motion.dvrkArm import dvrkArm
-from FLSpegtransfer.training.dvrkCurrEstDNN import dvrkCurrEstDNN
-from FLSpegtransfer.training.dvrkHystCompDNN import dvrkHystCompDNN
-from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
-import FLSpegtransfer.motion.dvrkVariables as dvrkVar
-from FLSpegtransfer.utils.Filter.filters import LPF
-import FLSpegtransfer.utils.CmnUtil as U
+from FLSpegtransferHO.motion.dvrkArm import dvrkArm
+from FLSpegtransferHO.training.dvrkCurrEstDNN import dvrkCurrEstDNN
+from FLSpegtransferHO.training.dvrkHystCompDNN import dvrkHystCompDNN
+from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
+from FLSpegtransferHO.utils.Filter.filters import LPF
+import FLSpegtransferHO.utils.CmnUtil as U
 import time
 import numpy as np
-from FLSpegtransfer.path import *
+from FLSpegtransferHO.path import *
 
 
 class dvrkController(dvrkArm):

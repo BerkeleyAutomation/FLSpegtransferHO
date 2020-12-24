@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from FLSpegtransfer.utils.ImgUtils import ImgUtils
+from FLSpegtransferHO.utils.ImgUtils import ImgUtils
 from mayavi import mlab
 
 class VisualizeDetection():

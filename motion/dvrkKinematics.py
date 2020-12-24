@@ -5,8 +5,8 @@ from math import pi
 import numpy as np
 # from robopy import transforms as tr
 # from robopy import graphics
-import FLSpegtransfer.utils.CmnUtil as U
-import FLSpegtransfer.motion.dvrkVariables as dvrkVar
+import FLSpegtransferHO.utils.CmnUtil as U
+import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
 
 
 # class dvrkKinematics(SerialLink):

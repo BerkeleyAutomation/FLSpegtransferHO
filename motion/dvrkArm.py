@@ -7,9 +7,9 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 from std_msgs.msg import Float64
 from tf_conversions import posemath
-import FLSpegtransfer.utils.CmnUtil as U
-import FLSpegtransfer.motion.dvrkVariables as dvrkVar
-from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransferHO.utils.CmnUtil as U
+import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
+from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
 
 
 class dvrkArm(object):

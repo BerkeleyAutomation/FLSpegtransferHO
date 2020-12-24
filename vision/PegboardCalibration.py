@@ -1,5 +1,5 @@
-from FLSpegtransfer.vision.BlockDetection3D import BlockDetection3D
-from FLSpegtransfer.vision.PCLRegistration import PCLRegistration
+from FLSpegtransferHO.vision.BlockDetection3D import BlockDetection3D
+from FLSpegtransferHO.vision.PCLRegistration import PCLRegistration
 import cv2
 import numpy as np
 import open3d as o3d
