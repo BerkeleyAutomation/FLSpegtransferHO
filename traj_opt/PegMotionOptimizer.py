@@ -171,7 +171,7 @@ class _PegMotionQP:
         self._l = []
         self._u = []
 
-        # minimize sum of squared velocities
+        # minimize sum of squared accelerations
         for t in range(self.H):
             for j in range(self.dim):
                 self._Prow.append(self._aidx(t, j))
@@ -181,6 +181,8 @@ class _PegMotionQP:
         # dynamics
         for t in range(self.H):
             for j in range(self.dim):
+                # q_{t+1} ==             q_t + v_t * t_step + a_t * t_step**2/2
+                # 0       == - q_{t+1} + q_t + v_t * t_step + a_t * t_step**2/2
                 self._constrain(self._qidx(t+1, j), -1.0)
                 self._constrain(self._qidx(t, j), 1.0)
                 self._constrain(self._vidx(t, j), self.t_step)
