@@ -4,7 +4,7 @@ for p in sys.path:
         sys.path.remove('/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
 import numpy as np
-from FLSpegtransferHO.utils.ImgUtils import ImgUtils
+from FLSpegtransfer.utils.ImgUtils import ImgUtils
 
 
 class BlockDetection2D:

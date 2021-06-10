@@ -4,9 +4,8 @@ from FLSpegtransfer.path import *
 import numpy as np
 
 # load data
-dir = "dataset/random_smooth_grey2_PSM2/"
-q_cmd = np.load(root + dir + "q_cmd.npy")
-q_phy = np.load(root + dir + "q_phy.npy")
+q_cmd = np.load("q_cmd.npy")
+q_phy = np.load("q_phy.npy")
 print ("data shape: ", np.shape(q_cmd))
 
 # plot training data
@@ -36,4 +35,4 @@ y_pred = np.concatenate((y_pred, dummy), axis=1)
 # plot_hysteresis(x, y_pred, show_window=True)
 
 i=4
-model.save(root+'/models/grey2_PSM2/model_random_smooth_q123.out'+str(i))
+model.save('model_random_smooth_q123.out'+str(i))

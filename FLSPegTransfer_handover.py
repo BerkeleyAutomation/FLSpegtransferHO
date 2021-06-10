@@ -1,22 +1,23 @@
-from FLSpegtransferHO.vision.ZividCapture import ZividCapture
-from FLSpegtransferHO.vision.BlockDetection3D import BlockDetection3D
-from FLSpegtransferHO.vision.GraspingPose3D import GraspingPose3D
-# from FLSpegtransferHO.vision.VisualizeDetection import VisualizeDetection
-from FLSpegtransferHO.vision.PegboardCalibration import PegboardCalibration
-from FLSpegtransferHO.motion.dvrkPegTransferMotionHandOver import dvrkPegTransferMotionHandOver
-from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
-from FLSpegtransferHO.path import *
+from FLSpegtransfer.vision.ZividCapture import ZividCapture
+from FLSpegtransfer.vision.BlockDetection3D import BlockDetection3D
+from FLSpegtransfer.vision.GraspingPose3D import GraspingPose3D
+from FLSpegtransfer.vision.VisualizeDetection import VisualizeDetection
+from FLSpegtransfer.vision.PegboardCalibration import PegboardCalibration
+from FLSpegtransfer.motion.dvrkPegTransferMotionHandOver import dvrkPegTransferMotionHandOver
+from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
+from FLSpegtransfer.path import *
 import threading
 import numpy as np
 
 
 class FLSPegTransferHandover:
-    def __init__(self, use_simulation=True, use_controller=True, use_optimization=True, which_camera='inclined'):
+    def __init__(self, use_simulation=True, use_controller=True, use_optimization=True, optimizer='cubic', which_camera='inclined'):
         self.use_simulation = use_simulation
 
         # load transform
         self.Trc1 = np.load(root + 'calibration_files/Trc_' + which_camera + '_PSM1.npy')  # robot to camera
         self.Trc2 = np.load(root + 'calibration_files/Trc_' + which_camera + '_PSM2.npy')  # robot to camera
+        self.Trc2[:3, -1] += np.array([-0.001, 0.00, 0.00])
         self.Tpc = np.load(root + 'calibration_files/Tpc_' + which_camera + '.npy')  # pegboard to camera
         # import modules
         if use_simulation:
@@ -25,12 +26,12 @@ class FLSPegTransferHandover:
             self.zivid = ZividCapture(which_camera=which_camera)
             self.zivid.start()
         self.block = BlockDetection3D(self.Tpc)
-        self.gp = {'PSM1': GraspingPose3D(dist_pps=5.3, dist_gps=5.3, which_arm='PSM1'),
-                   'PSM2': GraspingPose3D(dist_pps=4.6, dist_gps=4.6, which_arm='PSM2')}
-        # self.vd = VisualizeDetection()
+        self.gp = {'PSM1': GraspingPose3D(dist_pps=5, dist_gps=5, which_arm='PSM1'),
+                   'PSM2': GraspingPose3D(dist_pps=5, dist_gps=5, which_arm='PSM2')}
+        self.vd = VisualizeDetection()
         self.pegboard = PegboardCalibration()
         self.dvrk_motion\
-            = dvrkPegTransferMotionHandOver(use_controller=use_controller, use_optimization=use_optimization)
+            = dvrkPegTransferMotionHandOver(use_controller=use_controller, use_optimization=use_optimization, optimizer=optimizer)
         self.dvrk_model = dvrkKinematics()
 
         # action ordering (pick, place) pair
@@ -77,8 +78,7 @@ class FLSPegTransferHandover:
     def transform_task2robot(self, point, delta=False, inverse=False, which_arm='PSM1'):
         point = np.array(point)
         if inverse == False:
-            Tcp = np.linalg.inv(self.Tpc)  # (mm)
-            Tcp[:3, -1] = Tcp[:3, -1] * 0.001  # (m)
+            Tcp = np.linalg.inv(self.Tpc)
             if which_arm=='PSM1' or which_arm==0:
                 Trp = self.Trc1.dot(Tcp)
             elif which_arm=='PSM2' or which_arm==1:
@@ -88,40 +88,39 @@ class FLSPegTransferHandover:
             Rrp = Trp[:3, :3]
             trp = Trp[:3, -1]
             if delta == False:
-                transformed = Rrp.dot(point * 0.001) + trp
+                transformed = Rrp.dot(point) + trp
             else:
-                transformed = Rrp.dot(point * 0.001)
+                transformed = Rrp.dot(point)
         else:
             if which_arm=='PSM1':
-                Tcr = np.linalg.inv(self.Trc1)   # (m)
+                Tcr = np.linalg.inv(self.Trc1)
             elif which_arm=='PSM2':
-                Tcr = np.linalg.inv(self.Trc2)   # (m)
+                Tcr = np.linalg.inv(self.Trc2)
             else:
                 raise ValueError
-            Tcr[:3,-1] = Tcr[:3,-1] * 1000  # (mm)
             Tpr = self.Tpc.dot(Tcr)
             Rpr = Tpr[:3, :3]
             tpr = Tpr[:3, -1]
             if delta == False:
-                transformed = Rpr.dot(point * 1000) + tpr
+                transformed = Rpr.dot(point) + tpr
             else:
-                transformed = Rpr.dot(point * 1000)
+                transformed = Rpr.dot(point)
         return transformed
 
-    def place_servoing(self, nb_place):
+    def place_servoing(self, nb_place_corr):
         # get current position
         self.update_images()
-        pose_blk, pnt_blk, pnt_mask = self.block.find_block_servo(self.color, self.point)
+        pose_blk, pnt_blk, pnt_mask = self.block.find_block_servo(self.color, self.point, self.block.pnt_pegs[nb_place_corr])
         if len(pnt_blk) < 400:
-            delta = []
+            delta = [0.0, 0.0, 0.0]
             seen = False
         else:
-            # self.vd.plot3d(pnt_blocks=pnt_blk, pnt_masks=pnt_mask, pnt_pegs=self.block.pnt_pegs)
+            # self.vd.plot3d(pnt_blocks=[pnt_blk], pnt_masks=[pnt_mask], pnt_pegs=self.block.pnt_pegs)
             _, T = pose_blk
-            p_peg = self.block.pnt_pegs[nb_place] + np.array([0.0, 0.0, -5])  # sub-mm above peg
+            p_peg = self.block.pnt_pegs[nb_place_corr] + np.array([0.0, 0.0, -5])  # sub-mm above peg
             p_fid = [0, 0, 15]
-            p_fid = T[:3, :3].dot(p_fid) + T[:3,-1]     # w.r.t task coordinate
-            delta = p_peg - p_fid
+            p_fid = T[:3, :3].dot(p_fid) + T[:3, -1]  # w.r.t task coordinate
+            delta = (p_peg - p_fid) * 0.001  # unit to (m)
             seen = True
         return delta, seen
 
@@ -168,6 +167,11 @@ class FLSPegTransferHandover:
                     # find grasping & placing pose
                     self.gp[arm_pick].find_grasping_pose(pose_blk=pose_blk_pick, peg_point=self.block.pnt_pegs[nb_pick])
                     self.gp[arm_pick].find_placing_pose(peg_point=self.pnt_handover)
+
+                    # # visualize
+                    # pnt_grasping = np.array(self.gp[arm_pick].pose_grasping)[1:]
+                    # self.vd.plot3d([pnt_blk_pick], [pnt_mask_pick], self.block.pnt_pegs, [pnt_grasping])
+
                     self.state[0] = 'move_block'
                 else:  # no block detected
                     print ("No block detected for pick-up, Skip this order.")
@@ -182,13 +186,13 @@ class FLSPegTransferHandover:
                 arm_pick = self.action_list[self.action_order][0]
                 gp_pick = self.gp[arm_pick].pose_grasping      # [n, ang, x,y,z, seen]
                 gp_place = self.gp[arm_pick].pose_placing      # [n, ang, x,y,z, seen]
-                gp_pick_robot = self.transform_task2robot(gp_pick[1:], which_arm=arm_pick)  # [x,y,z]
-                gp_place_robot = self.transform_task2robot(gp_place[1:], which_arm=arm_pick)  # [x,y,z]
+                gp_place = np.array(gp_place)
+                gp_pick_robot = self.transform_task2robot(gp_pick[1:]*0.001, which_arm=arm_pick)  # [x,y,z]
+                gp_place_robot = self.transform_task2robot(gp_place[1:]*0.001, which_arm=arm_pick)  # [x,y,z]
 
                 # pick up block and move to center
                 self.dvrk_motion.go_pick(pos_pick=gp_pick_robot, rot_pick=gp_pick[0], which_arm=arm_pick)
-                self.dvrk_motion.go_handover(pos_pick=gp_pick_robot, rot_pick=gp_pick[0],
-                                               pos_place=gp_place_robot, rot_place=gp_place[0], which_arm=arm_pick)
+                self.dvrk_motion.go_handover(pos_pick=gp_pick_robot, rot_pick=gp_pick[0], pos_place=gp_place_robot, rot_place=gp_place[0], which_arm=arm_pick)
                 self.event_blockready.set()
                 self.event_handover.wait()   # until block is grasped by other gripper
                 self.event_handover.clear()
@@ -226,17 +230,23 @@ class FLSPegTransferHandover:
 
                 nb_place = self.action_list[self.action_order][3]
                 arm_place = self.action_list[self.action_order][2]
-                pose_blk_pick, pnt_blk_pick, pnt_mask_pick = self.block.find_block_servo(
+                nb_place_corr = nb_place
+                pose_blk_pick, pnt_blk_pick, pnt_mask_pick = self.block.find_block_servo_handover(
                     img_color=self.color, img_point=self.point)
 
                 # check if there is block to move
                 if pose_blk_pick != []:
                     # find grasping & placing pose
-                    self.gp[arm_place].find_grasping_pose_handover(pose_blk=pose_blk_pick)
+                    self.gp[arm_place].find_grasping_pose_handover(pose_blk=pose_blk_pick, which_arm=arm_place)
                     self.gp[arm_place].find_placing_pose(peg_point=self.block.pnt_pegs[nb_place])
+
                     # visualize
-                    # pnt_grasping = np.array(self.gp[0].pose_grasping)[1:]
-                    # self.vd.plot3d(pnt_blk_pick, pnt_mask_pick, self.block.pnt_pegs, [pnt_grasping])
+                    # pnt_grasping = np.array(self.gp[arm_place].pose_grasping)[1:]
+                    # np.save('pnt_blk_pick', pnt_blk_pick)
+                    # np.save('pnt_mask_pick', pnt_mask_pick)
+                    # np.save('block_pnt_pegs', self.block.pnt_pegs)
+                    # np.save('pnt_grasping', pnt_grasping)
+                    # self.vd.plot3d([pnt_blk_pick], [pnt_mask_pick], self.block.pnt_pegs, [pnt_grasping])
                     self.state[1] = 'move_block'
                 else:
                     print("No block detected for hand-over, Skip this order.")
@@ -249,8 +259,9 @@ class FLSPegTransferHandover:
                 arm_place = self.action_list[self.action_order][2]
                 gp_pick = self.gp[arm_place].pose_grasping
                 gp_place = self.gp[arm_place].pose_placing
-                gp_pick_robot = self.transform_task2robot(gp_pick[1:], which_arm=arm_place)  # [x,y,z]
-                gp_place_robot = self.transform_task2robot(gp_place[1:], which_arm=arm_place)  # [x,y,z]
+                gp_place = np.array(gp_place)
+                gp_pick_robot = self.transform_task2robot(gp_pick[1:]*0.001, which_arm=arm_place)  # [x,y,z]
+                gp_place_robot = self.transform_task2robot(gp_place[1:]*0.001, which_arm=arm_place)  # [x,y,z]
 
                 # pick (hand-over)
                 self.dvrk_motion.pick_block(pos=gp_pick_robot, rot=gp_pick[0], which_arm=arm_place)
@@ -261,10 +272,18 @@ class FLSPegTransferHandover:
 
                 # place
                 self.dvrk_motion.go_place(pos_place=gp_place_robot, rot_place=gp_place[0], which_arm=arm_place)
+
+                # visual correction
+                delta, seen = self.place_servoing(nb_place_corr)
+                delta_rob = self.transform_task2robot(delta, delta=True)
+                delta_rob[2] = 0.0  # temporary
+                print(delta_rob)
+                self.dvrk_motion.servoing_block(pos_place=gp_place_robot + delta_rob, rot_place=gp_place[0], which_arm=arm_place)
                 print('')
                 print("Action completed")
                 self.state[1] = 'plan_action'
 
 
 if __name__ == '__main__':
-    FLS = FLSPegTransferHandover(use_simulation=True, use_controller=False, use_optimization=False, which_camera='inclined')
+
+    FLS = FLSPegTransferHandover(use_simulation=False, use_controller=False, use_optimization=False, optimizer='qp', which_camera='inclined')

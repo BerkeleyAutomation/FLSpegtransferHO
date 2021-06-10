@@ -1,5 +1,6 @@
-from FLSpegtransferHO.vision.BlockDetection3D import BlockDetection3D
-from FLSpegtransferHO.vision.PCLRegistration import PCLRegistration
+from FLSpegtransfer.vision.BlockDetection3D import BlockDetection3D
+from FLSpegtransfer.vision.PCLRegistration import PCLRegistration
+from FLSpegtransfer.path import *
 import cv2
 import numpy as np
 import open3d as o3d
@@ -39,13 +40,16 @@ class PegboardCalibration:
         peg_board = np.zeros_like(img_color)
         cv2.drawContours(peg_board, cnts, 0, (255, 255, 255), -1)
         pnt_board = img_point[np.all(peg_board == [255, 255, 255], axis=-1)]
-        pnt_board = BlockDetection3D.remove_nan(pnt_board)
+        pnt_board = BlockDetection3D.remove_nan(pnt_board)*0.001    # (m)
         pcl_board = o3d.geometry.PointCloud()
         pcl_board.points = o3d.utility.Vector3dVector(pnt_board)
 
         # load target (pegboard model)
-        root = '/home/davinci/pycharmprojects/FLSpegtransfer/'
         pcl_model = o3d.io.read_point_cloud(root + 'img/peg_board.pcd')
+        pnt_model = PCLRegistration.convert(pcl_model)[1] * 0.001   # to (m)
+        pcl_model = PCLRegistration.convert(pnt_model)[0]
+        print (pnt_board)
+        print (pnt_model)
 
         # registration
         Tpc = PCLRegistration.registration(source=pcl_board, target=pcl_model)

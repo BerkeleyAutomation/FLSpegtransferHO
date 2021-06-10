@@ -1,8 +1,9 @@
-from probreg import features
-from probreg import callbacks
-from probreg import l2dist_regs
+# from probreg import features
+# from probreg import callbacks
+# from probreg import l2dist_regs
 import open3d as o3d
 import open3d.cpu.pybind.pipelines.registration as o3d_reg
+
 import numpy as np
 import copy
 
@@ -56,9 +57,12 @@ class PCLRegistration:
         return inlier, outlier, coefficients
 
     @classmethod
-    def registration(cls, source, target, use_svr=False, save_image=False, visualize=False):
-        source, _ = PCLRegistration.convert(source)
-        target, _ = PCLRegistration.convert(target)
+    def registration(cls, source, target, downsample=1, use_svr=False, save_image=False, visualize=False):
+        source_down = source.uniform_down_sample(every_k_points=downsample)
+        target_down = target.uniform_down_sample(every_k_points=downsample)
+
+        source, _ = PCLRegistration.convert(source_down)
+        target, _ = PCLRegistration.convert(target_down)
 
         src = copy.deepcopy(source)
         tgt = copy.deepcopy(target)
@@ -97,9 +101,9 @@ class PCLRegistration:
             threshold = [20, 10, 5, 2, 1, 0.5, 0.2]
             for i in range(len(threshold)):
                 for j in range(icp_iteration):
-                    reg_p2p = o3d.registration.registration_icp(src, tgt, threshold[i], np.identity(4),
-                                                                o3d.registration.TransformationEstimationPointToPoint(),
-                                                                o3d.registration.ICPConvergenceCriteria(max_iteration=1))
+                    reg_p2p = o3d_reg.registration_icp(src, tgt, threshold[i], np.identity(4),
+                                                                o3d_reg.TransformationEstimationPointToPoint(),
+                                                                o3d_reg.ICPConvergenceCriteria(max_iteration=1))
                     src.transform(reg_p2p.transformation)
                     T = copy.deepcopy(reg_p2p.transformation).dot(T)
                     vis.update_geometry(src)

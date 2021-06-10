@@ -1,13 +1,13 @@
-from FLSpegtransferHO.motion.dvrkArm import dvrkArm
-from FLSpegtransferHO.training.dvrkCurrEstDNN import dvrkCurrEstDNN
-from FLSpegtransferHO.training.dvrkHystCompDNN import dvrkHystCompDNN
-from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
-import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
-from FLSpegtransferHO.utils.Filter.filters import LPF
-import FLSpegtransferHO.utils.CmnUtil as U
+from FLSpegtransfer.motion.dvrkArm import dvrkArm
+from FLSpegtransfer.training.dvrkCurrEstDNN import dvrkCurrEstDNN
+from FLSpegtransfer.training.dvrkHystCompDNN import dvrkHystCompDNN
+from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransfer.motion.dvrkVariables as dvrkVar
+from FLSpegtransfer.utils.Filter.filters import LPF
+import FLSpegtransfer.utils.CmnUtil as U
 import time
 import numpy as np
-from FLSpegtransferHO.path import *
+from FLSpegtransfer.path import *
 
 
 class dvrkController(dvrkArm):
@@ -34,8 +34,11 @@ class dvrkController(dvrkArm):
 
         q_phy = super().get_current_joint(wait_callback=True)
         self.last_joint_cmd = q_phy
-        for i in range(20):
-            self.hyst_comp.step(q_phy)
+
+        # To prevent abruct motion from the NN model
+        if self.comp_hysteresis:  # update new joint values
+            joint = self.hyst_comp.step(q_phy)
+            super().set_joint_interpolate(joint=joint)
 
     @property
     def curr_threshold(self):
@@ -49,7 +52,7 @@ class dvrkController(dvrkArm):
     def get_current_pose(self):
         return dvrkKinematics.joint_to_pose(self.last_joint_cmd)
 
-    def get_current_joint(self):
+    def get_current_joint(self, wait_callback=True):
         return self.last_joint_cmd
 
     def set_pose(self, pos=None, rot=None, use_ik=True, wait_callback=True):

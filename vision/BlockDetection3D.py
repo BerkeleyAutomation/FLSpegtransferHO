@@ -1,10 +1,11 @@
 import cv2
-from FLSpegtransferHO.vision.BlockDetection2D import BlockDetection2D
-from FLSpegtransferHO.vision.PCLRegistration import PCLRegistration
-import FLSpegtransferHO.utils.CmnUtil as U
-from FLSpegtransferHO.path import *
+from FLSpegtransfer.vision.BlockDetection2D import BlockDetection2D
+from FLSpegtransfer.vision.PCLRegistration import PCLRegistration
+import FLSpegtransfer.utils.CmnUtil as U
+from FLSpegtransfer.path import *
 import numpy as np
 import open3d as o3d
+import time
 
 
 class BlockDetection3D:
@@ -67,11 +68,17 @@ class BlockDetection3D:
         masked = points[(points[:, 2] > depth_range[0]) & (points[:, 2] < depth_range[1])]
         return masked
 
-    def cluster_pegs(self, pnt_pegs, density, min_size):
+    @classmethod
+    def mask_around_peg(cls, points, pnt_peg):
+        masked = points[(points[:, 0] > pnt_peg[0]-10) & (points[:, 0] < pnt_peg[0]+10) & (points[:, 1] > pnt_peg[1]-10) & (points[:, 1] < pnt_peg[1]+10)]
+        return masked
+
+    def cluster_pegs(self, pnt_pegs, density, min_size, visualize=False):
         # numpy to open3d.PointCloud
         pcl_pegs = o3d.geometry.PointCloud()
         pcl_pegs.points = o3d.utility.Vector3dVector(pnt_pegs)
-        # o3d.visualization.draw_geometries([pcl_pegs])
+        if visualize:
+            o3d.visualization.draw_geometries([pcl_pegs])
 
         # clustering
         labels = np.array(pcl_pegs.cluster_dbscan(eps=density, min_points=min_size, print_progress=False))
@@ -162,23 +169,24 @@ class BlockDetection3D:
         return pose # [nb_block, euler angle, T]
 
     # find coordinates of the clustered pegs
-    def find_pegs(self, img_color, img_point):
+    def find_pegs(self, img_color, img_point, visualize=False):
         # color masking & transform points to pegboard coordinate
         pnt_masked = self.mask_color(img_color, img_point, [self.lower_red, self.upper_red])
         pnt_masked = self.remove_nan(pnt_masked)
-        pnt_transformed = U.transform(pnt_masked, self.Tpc)
+        pnt_transformed = U.transform(pnt_masked*0.001, self.Tpc)*1000
+
 
         # depth masking
         pnt_pegs = self.mask_depth(pnt_transformed, self.depth_peg)
-        clustered = self.cluster_pegs(pnt_pegs, density=2, min_size=10)
+        clustered = self.cluster_pegs(pnt_pegs, density=3, min_size=30, visualize=visualize)
         self.pnt_pegs = BlockDetection2D.sort_pegs(clustered)  # [[x0, y0, z0], ..., [xn, yn, zn]]
 
     # find block, given block number
-    def find_block(self, block_number, img_color, img_point):
+    def find_block(self, block_number, img_color, img_point, which_arm=None):
         # color masking & transform points to pegboard coordinate
         pnt_masked = self.mask_color(img_color, img_point, [self.lower_red, self.upper_red])
         pnt_masked = self.remove_nan(pnt_masked)
-        pnt_transformed = U.transform(pnt_masked, self.Tpc)
+        pnt_transformed = U.transform(pnt_masked*0.001, self.Tpc)*1000
 
         # block image masking by depth
         pnt_blks = self.mask_depth(pnt_transformed, self.depth_block)
@@ -196,30 +204,56 @@ class BlockDetection3D:
         else:
             pcl_blk = o3d.geometry.PointCloud()
             pcl_blk.points = o3d.utility.Vector3dVector(pnt_blk)
-            T = PCLRegistration.registration(pcl_blk, self.pcl_model, use_svr=False, save_image=False, visualize=False)
+            st = time.time()
+            T = PCLRegistration.registration(pcl_blk, self.pcl_model, downsample=2, use_svr=False, save_image=False, visualize=False)
+            print(time.time() - st)
             T = np.linalg.inv(T)    # transform from model to block
             blk_ang = self.get_pose(T)
             pose_blk = [blk_ang, T]
             pnt_mask = T[:3, :3].dot(self.pnt_model.T).T + T[:3, -1].T  # transformed mask points
         return pose_blk, pnt_blk, pnt_mask
 
-    def find_block_servo(self, img_color, img_point):
+    def find_block_servo(self, img_color, img_point, pnt_peg, which_arm=None):
         # color masking & transform points to pegboard coordinate
         pnt_masked = self.mask_color(img_color, img_point, [self.lower_red, self.upper_red])
         pnt_masked = self.remove_nan(pnt_masked)
-        pnt_transformed = U.transform(pnt_masked, self.Tpc)
+        pnt_transformed = U.transform(pnt_masked*0.001, self.Tpc)*1000
         # block image masking by depth
-        pnt_blk = self.mask_depth(pnt_transformed, self.depth_block_servo)
+        pnt_depth_masked = self.mask_depth(pnt_transformed, self.depth_block_servo)
+        pnt_blk = self.mask_around_peg(pnt_depth_masked, pnt_peg)
 
         # remove outliers
-        pnt_blk, _ = PCLRegistration.remove_outliers(pnt_blk, nb_points=10, radius=3, visualize=False)
+        # pnt_blk, _ = PCLRegistration.remove_outliers(pnt_blk, nb_points=20, radius=2, visualize=False)
         pcl_blk, pnt_blk = PCLRegistration.convert(pnt_blk)
         # registration
         if len(pnt_blk) < 100:
             pose_blk = []
             pnt_mask = []
         else:
-            T = PCLRegistration.registration(pcl_blk, self.pcl_model_servo, use_svr=False, save_image=False, visualize=False)
+            T = PCLRegistration.registration(pcl_blk, self.pcl_model_servo, downsample=2, use_svr=False, save_image=False, visualize=False)
+            T = np.linalg.inv(T)    # transform from model to block
+            blk_ang = self.get_pose(T)
+            pose_blk = [blk_ang, T]
+            pnt_mask = T[:3, :3].dot(self.pnt_model_servo.T).T + T[:3, -1].T  # transformed mask points
+        return pose_blk, pnt_blk, pnt_mask
+
+    def find_block_servo_handover(self, img_color, img_point):
+        # color masking & transform points to pegboard coordinate
+        pnt_masked = self.mask_color(img_color, img_point, [self.lower_red, self.upper_red])
+        pnt_masked = self.remove_nan(pnt_masked)
+        pnt_transformed = U.transform(pnt_masked*0.001, self.Tpc)*1000
+        # block image masking by depth
+        pnt_blk = self.mask_depth(pnt_transformed, self.depth_block_servo)
+
+        # remove outliers
+        # pnt_blk, _ = PCLRegistration.remove_outliers(pnt_blk, nb_points=20, radius=2, visualize=False)
+        pcl_blk, pnt_blk = PCLRegistration.convert(pnt_blk)
+        # registration
+        if len(pnt_blk) < 100:
+            pose_blk = []
+            pnt_mask = []
+        else:
+            T = PCLRegistration.registration(pcl_blk, self.pcl_model_servo, downsample=2, use_svr=False, save_image=False, visualize=False)
             T = np.linalg.inv(T)    # transform from model to block
             blk_ang = self.get_pose(T)
             pose_blk = [blk_ang, T]
@@ -230,7 +264,7 @@ class BlockDetection3D:
         # color masking & transform points to pegboard coordinate
         pnt_masked = self.mask_color(img_color, img_point, [self.lower_red, self.upper_red])
         pnt_masked = self.remove_nan(pnt_masked)
-        pnt_transformed = U.transform(pnt_masked, self.Tpc)
+        pnt_transformed = U.transform(pnt_masked*0.001, self.Tpc)*1000
 
         # block image masking by depth
         pnt_blks = self.mask_depth(pnt_transformed, self.depth_block)

@@ -1,12 +1,12 @@
-from FLSpegtransferHO.utils.ImgUtils import ImgUtils
+from FLSpegtransfer.utils.ImgUtils import ImgUtils
 import numpy as np
 
 
 class GraspingPose3D:
     def __init__(self, dist_gps, dist_pps, which_arm='PSM1'):
         # sample grasping poses
-        self.sample_gps = self.sample_grasping_pose(gp_number=2, dist_center=dist_gps, dist_gp=2.5, which_arm=which_arm)
-        self.sample_pps = self.sample_grasping_pose(gp_number=2, dist_center=dist_pps, dist_gp=2.5, which_arm=which_arm)
+        self.sample_gps = self.sample_grasping_pose(gp_number=2, dist_center=dist_gps, dist_gp=2.0, which_arm=which_arm)
+        self.sample_pps = self.sample_grasping_pose(gp_number=2, dist_center=dist_pps, dist_gp=2.0, which_arm=which_arm)
         self.which_arm = which_arm
         self._pose_grasping = []
         self._pose_placing = []
@@ -97,7 +97,7 @@ class GraspingPose3D:
         self.pose_grasping = pose_grasping[0]     # [grasping angle, x, y, z]
 
     # grasping angle is positive in counter-clockwise direction
-    def find_grasping_pose_handover(self, pose_blk):
+    def find_grasping_pose_handover(self, pose_blk, which_arm): # which arm to pick-up
         if pose_blk == []:
             pose_grasping = []
             arg = []
@@ -108,11 +108,21 @@ class GraspingPose3D:
 
             # 1. Select grasping points in roll angle of -70 ~ 70 (deg)
             # 2. Choose the point on the far right
-            con1 = (gps_transformed[:, 0] >= -70) & (gps_transformed[:, 0] <= 70)
+            if which_arm == "PSM1":
+                con1 = (gps_transformed[:, 0] >= -70) & (gps_transformed[:, 0] <= 70)
+            elif which_arm == "PSM2":
+                con1 = (gps_transformed[:, 0] >= -70) & (gps_transformed[:, 0] <= 70)
+            else:
+                raise ValueError
             arg1 = np.argwhere(con1)
             group = gps_transformed[con1]
 
-            arg2 = np.argmax(group[:,1])    # select a point having the largest x
+            if which_arm == "PSM1":
+                arg2 = np.argmax(group[:, 1])    # select a point having the largest x
+            elif which_arm == 'PSM2':
+                arg2 = np.argmin(group[:, 1])
+            else:
+                raise ValueError
             arg = arg1[arg2]
             pose_grasping = gps_transformed[arg]
         self.pose_grasping_arg = arg[0]
@@ -144,10 +154,21 @@ class GraspingPose3D:
         ang = self.sample_pps[self._pose_grasping_arg][0]
         pp = self.sample_pps[self._pose_grasping_arg][1:3]
         pp_rotated = ImgUtils.transform_pnts([pp[:2]], [.0, .0], -ang, .0, .0)
-        pp_pad = np.pad(pp_rotated, ((0, 0), (0, 1)), constant_values=0.0)[0]
+        pp_pad = np.pad(pp_rotated, ((0, 0), (0, 1)), mode='constant', constant_values=0.0)[0]
         pp_transformed = peg_point + pp_pad  # assuming the same z-coord of pp as peg_points
         placing_pose = [0.0] + list(pp_transformed)
         self.pose_placing = placing_pose   # [placing angle, x, y, z]
+
+    # # keep orientation of the block
+    # def find_placing_pose(self, peg_point):
+    #     ang = self.sample_pps[self._pose_grasping_arg][0]
+    #     pp = self.sample_pps[self._pose_grasping_arg][1:3]
+    #     pp_rotated = ImgUtils.transform_pnts([pp[:2]], [.0, .0], -ang, .0, .0)
+    #     pp_rotated = ImgUtils.transform_pnts(pp_rotated, [.0, .0], self._pose_grasping[0], .0, .0)
+    #     pp_pad = np.pad(pp_rotated, ((0, 0), (0, 1)), mode='constant', constant_values=0.0)[0]
+    #     pp_transformed = peg_point + pp_pad  # assuming the same z-coord of pp as peg_points
+    #     placing_pose = [self._pose_grasping[0]] + list(pp_transformed)
+    #     self.pose_placing = placing_pose   # [placing angle, x, y, z]
 
     @classmethod
     def find_placing_pose_all(cls, num_pickup, num_place, pose_blks, grasping_pose, peg_points):

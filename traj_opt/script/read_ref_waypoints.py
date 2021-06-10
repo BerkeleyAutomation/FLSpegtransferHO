@@ -10,3 +10,4 @@ for wp in waypoints:
     print("waypoint1: ", qw1)
     print("waypoint2: ", qw2)
     print("final conf: ", qf)
+    print("")

@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
-from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
-import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
-from FLSpegtransferHO.vision.ZividUtils import ZividUtils
+from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransfer.motion.dvrkVariables as dvrkVar
+from FLSpegtransfer.vision.ZividUtils import ZividUtils
 
 
 class BallDetectionRGBD:
@@ -10,6 +10,7 @@ class BallDetectionRGBD:
 
         # Transform
         self.Tpc = Tpc  # from pegboard to camera
+        self.Tpc[:3, -1] *= 1000  # convert to (mm) as Zivid provides point sets in (mm)
         self.Trc = Trc  # from camera to robot
         if Trc == []:
             pass
@@ -18,21 +19,27 @@ class BallDetectionRGBD:
             self.trc = self.Trc[:3, 3]
 
         # thresholding value
-        self.__masking_depth = [-150, 10]
-        self.__lower_red = np.array([0-20, 80, 60])
+        # self.__masking_depth = [-170, 20]
+        self.__masking_depth = [0, 1000]
+        self.__lower_red = np.array([0-20, 100, 40])
         self.__upper_red = np.array([0+20, 255, 255])
-        self.__lower_green = np.array([60-20, 130, 40])
+        self.__lower_green = np.array([60-20, 160, 40])
         self.__upper_green = np.array([60+20, 255, 255])
-        self.__lower_blue = np.array([120-20, 130, 40])
-        self.__upper_blue = np.array([120+20, 255, 255])
+        self.__lower_blue = np.array([120-30, 100, 40])
+        self.__upper_blue = np.array([120+30, 255, 255])
         self.__lower_yellow = np.array([30-10, 130, 60])
         self.__upper_yellow = np.array([30+10, 255, 255])
         # radius of sphere fiducials = [12.0, 10.0, 8.0, 8.0, 8.0, 8.0]    # (mm)
 
         # dimension of tool
         self.d = 35       # length of coordinate (mm)
-        self.Lbb = 0.050  # ball1 ~ ball2 (m)
-        self.Lbp = 0.017  # ball2 ~ pitch (m)
+        # self.Lbb = 0.050  # ball1 ~ ball2 (m)
+        # self.Lbp = 0.017  # ball2 ~ pitch (m)
+
+        # new spheres
+        self.Lbb = 0.03499  # ball1 ~ ball2 (m)
+        self.Lbp = 0.01583  # ball2 ~ pitch (m)
+        # D_ball1 = 20, D_ball2 = 17
         self.zivid_utils = ZividUtils(which_camera=which_camera)
 
 
@@ -150,106 +157,113 @@ class BallDetectionRGBD:
         return R.dot(points.T).T + t.T
 
     def mask_image(self, img_color, img_point, color, visualize=False):
-        # define hsv_range
-        if color == 'red':      hsv_range = [self.__lower_red, self.__upper_red]
-        elif color == 'green':  hsv_range = [self.__lower_green, self.__upper_green]
-        elif color == 'blue':   hsv_range = [self.__lower_blue, self.__upper_blue]
-        elif color == 'yellow': hsv_range = [self.__lower_yellow, self.__upper_yellow]
-        else:   hsv_range = []
+        try:
+            # define hsv_range
+            if color == 'red':      hsv_range = [self.__lower_red, self.__upper_red]
+            elif color == 'green':  hsv_range = [self.__lower_green, self.__upper_green]
+            elif color == 'blue':   hsv_range = [self.__lower_blue, self.__upper_blue]
+            elif color == 'yellow': hsv_range = [self.__lower_yellow, self.__upper_yellow]
+            else:   hsv_range = []
 
-        # 2D color masking
-        img_hsv = cv2.cvtColor(img_color, cv2.COLOR_BGR2HSV)
-        img_masked = cv2.inRange(img_hsv, hsv_range[0], hsv_range[1])
+            # 2D color masking
+            img_hsv = cv2.cvtColor(img_color, cv2.COLOR_BGR2HSV)
+            img_masked = cv2.inRange(img_hsv, hsv_range[0], hsv_range[1])
 
-        if visualize:
-            cv2.imshow("", img_masked)
-            cv2.waitKey(0)
+            if visualize:
+                cv2.imshow("", img_masked)
+                cv2.waitKey(0)
 
-        # noise filtering
-        kernel = np.ones((2, 2), np.uint8)
-        img_masked = cv2.morphologyEx(img_masked, cv2.MORPH_OPEN, kernel)
+            # noise filtering
+            # kernel = np.ones((2, 2), np.uint8)
+            # img_masked = cv2.morphologyEx(img_masked, cv2.MORPH_OPEN, kernel)
 
-        # color masking
-        con1 = (img_masked == 255)
-        arg1 = np.argwhere(con1)
-        pnt1 = img_point[con1]
+            # color masking
+            con1 = (img_masked == 255)
+            arg1 = np.argwhere(con1)
+            pnt1 = img_point[con1]
 
-        if len(arg1) < 1000:
-            mask = np.zeros_like(img_masked)
-        else:
-            # remove nan
-            con2 = (~np.isnan(pnt1).any(axis=1))
-            arg2 = np.argwhere(con2)
-            pnt2 = pnt1[con2]
-
-            # transform w.r.t. task coordinate
-            pnt2_tr = self.transform(pnt2, self.Tpc)
-
-            # depth masking
-            con3 = (pnt2_tr[:, 2] > self.__masking_depth[0]) & (pnt2_tr[:, 2] < self.__masking_depth[1])
-            arg3 = np.argwhere(con3)
-
-            # creat mask where color & depth conditions hold
-            arg_mask = np.squeeze(arg1[arg2[arg3]])
-            mask = np.zeros_like(img_masked)
-            mask[arg_mask[:,0], arg_mask[:,1]] = 255
-        return mask
-
-    def find_balls(self, img_color, img_point, color, nb_sphere, visualize=False):
-        if visualize:
-            cv2.imshow("", img_color)
-            cv2.waitKey(0)
-
-        # mask color & depth
-        masked = self.mask_image(img_color, img_point, color, visualize)
-        if visualize:
-            cv2.imshow("", masked)
-            cv2.waitKey(0)
-
-        # Find contours
-        cnts, _ = cv2.findContours(masked, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:nb_sphere]
-        pb = []
-        for c in cnts:
-            if len(c) < 80:
-            # if cv2.contourArea(c) > 500 # thresholding by area is more accurate
-                pass
+            if len(arg1) < 1000:
+                mask = np.zeros_like(img_masked)
             else:
-                # if visualize:
-                img_color_copy = np.copy(img_color)
-                cv2.drawContours(img_color_copy, [c], -1, (0, 255, 255), 1)
-                if visualize:
-                    cv2.imshow("", img_color_copy)
-                    cv2.waitKey(0)
+                # remove nan
+                con2 = (~np.isnan(pnt1).any(axis=1))
+                arg2 = np.argwhere(con2)
+                pnt2 = pnt1[con2]
 
-                # Find 3D points of a ball
-                # Get the pixel coordinates inside the contour
-                infilled = np.zeros(np.shape(img_color), np.uint8)
-                cv2.drawContours(infilled, [c], 0, (255, 255, 255), -1)
-                infilled = cv2.cvtColor(infilled, cv2.COLOR_BGR2GRAY)
-                ball_masked = cv2.bitwise_and(masked, masked, mask=infilled)
-                if visualize:
-                    cv2.imshow("", ball_masked)
-                    cv2.waitKey(0)
+                # transform w.r.t. task coordinate
+                # pnt2_tr = self.transform(pnt2, self.Tpc)
 
-                # Get the point clouds
-                args = np.argwhere(ball_masked == 255)
-                points_ball = img_point[args[:,0], args[:,1]]
+                # depth masking
+                con3 = (pnt2[:, 2] > self.__masking_depth[0]) & (pnt2[:, 2] < self.__masking_depth[1])
+                arg3 = np.argwhere(con3)
 
-                # Linear regression to fit the circle into the point cloud
-                xc, yc, zc, rc = self.fit_circle_3d(points_ball[:, 0], points_ball[:, 1], points_ball[:, 2])
-                pb.append([xc, yc, zc, rc])
-
-        if len(pb) < nb_sphere:
+                # creat mask where color & depth conditions hold
+                arg_mask = np.squeeze(arg1[arg2[arg3]])
+                mask = np.zeros_like(img_masked)
+                mask[arg_mask[:, 0], arg_mask[:, 1]] = 255
+            return mask
+            #return img_masked
+        except:
             return []
 
-        if len(pb) >= 2:
-            # sort by radius
-            pb = np.array(pb)
-            arg = np.argsort(pb[:, 3])[::-1]
-            return pb[arg]
-        else:
-            return np.squeeze(pb)
+    def find_balls(self, img_color, img_point, color, nb_sphere, visualize=False):
+        try:
+            if visualize:
+                cv2.imshow("", img_color)
+                cv2.waitKey(0)
+
+            # mask color & depth
+            masked = self.mask_image(img_color, img_point, color, visualize)
+            if visualize:
+                cv2.imshow("", masked)
+                cv2.waitKey(0)
+
+            # Find contours
+            cnts, _ = cv2.findContours(masked, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:nb_sphere]
+            pb = []
+            for c in cnts:
+                if len(c) < 50:
+                #if cv2.contourArea(c) > 500: # thresholding by area is more accurate
+                    pass
+                else:
+                    # if visualize:
+                    img_color_copy = np.copy(img_color)
+                    cv2.drawContours(img_color_copy, [c], -1, (0, 255, 255), 1)
+                    if visualize:
+                        cv2.imshow("", img_color_copy)
+                        cv2.waitKey(0)
+
+                    # Find 3D points of a ball
+                    # Get the pixel coordinates inside the contour
+                    infilled = np.zeros(np.shape(img_color), np.uint8)
+                    cv2.drawContours(infilled, [c], 0, (255, 255, 255), -1)
+                    infilled = cv2.cvtColor(infilled, cv2.COLOR_BGR2GRAY)
+                    ball_masked = cv2.bitwise_and(masked, masked, mask=infilled)
+                    if visualize:
+                        cv2.imshow("", ball_masked)
+                        cv2.waitKey(0)
+
+                    # Get the point clouds
+                    args = np.argwhere(ball_masked == 255)
+                    points_ball = img_point[args[:,0], args[:,1]]
+
+                    # Linear regression to fit the circle into the point cloud
+                    xc, yc, zc, rc = self.fit_circle_3d(points_ball[:, 0], points_ball[:, 1], points_ball[:, 2])
+                    pb.append([xc, yc, zc, rc])
+
+            if len(pb) < nb_sphere:
+                return []
+
+            if len(pb) >= 2:
+                # sort by radius
+                pb = np.array(pb)
+                arg = np.argsort(pb[:, 3])[::-1]
+                return pb[arg]
+            else:
+                return np.squeeze(pb)
+        except:
+            return []
 
     @classmethod
     def fit_circle_3d(cls, x, y, z, w=[]):
@@ -367,4 +381,4 @@ class BallDetectionRGBD:
         pts1 = pts1.T
         pts2 = pts2.T
         Rb = pts2.dot(np.linalg.inv(pts1))
-        return Rb   # w.r.t. robot base coordinat
+        return Rb   # w.r.t. robot base coordinate

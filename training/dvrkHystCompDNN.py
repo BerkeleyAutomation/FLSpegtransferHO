@@ -1,4 +1,4 @@
-from FLSpegtransferHO.path import *
+from FLSpegtransfer.path import *
 import torch
 import torch.nn as nn
 from torch.autograd import Variable

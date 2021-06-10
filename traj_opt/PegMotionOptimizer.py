@@ -1,6 +1,6 @@
 import numpy as np
-import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
-from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
+import FLSpegtransfer.motion.dvrkVariables as dvrkVar
+from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
 import time
 import osqp
 from scipy import sparse
@@ -146,10 +146,13 @@ def interpolate(x_prev, H_prev, t_prev, H_next, t_next, n_slack=0):
     return x_next
 
 class _PegMotionQP:
-    def __init__(self, H, t_step):
+    def __init__(self, H, t_step, max_vel, max_acc, max_jerk=None, a_prev=None, a_next=None, minimize="a"):
+        assert minimize == "v" or minimize == "a" or minimize == "j"
         self.robot = dvrkKinematics()
-        self.max_vel = [1.0, 1.0, 1.0, 8.0, 8.0, 8.0]
-        self.max_acc = [1.0, 1.0, 1.0, 8.0, 8.0, 8.0]
+        self.max_vel = max_vel # [1.0, 1.0, 1.0, 8.0, 8.0, 8.0]
+        self.max_acc = max_acc # [1.0, 1.0, 1.0, 8.0, 8.0, 8.0]
+        self.minimize = minimize
+        self.max_jerk = max_jerk
         self.t_step = t_step
         self.H = H
         self.dim = 6
@@ -158,9 +161,9 @@ class _PegMotionQP:
         self._n_vars = (H+1) * self.dim * 3 - self.dim
         self._v0 = (H+1) * self.dim
         self._a0 = (H+1) * self.dim * 2
-        self.init()
+        self.init(a_prev, a_next)
 
-    def init(self):
+    def init(self, a_prev, a_next):
         self._Pval = []
         self._Prow = []
         self._Pcol = []
@@ -171,18 +174,39 @@ class _PegMotionQP:
         self._l = []
         self._u = []
 
-        # minimize sum of squared accelerations
-        for t in range(self.H):
-            for j in range(self.dim):
-                self._Prow.append(self._aidx(t, j))
-                self._Pcol.append(self._aidx(t, j))
-                self._Pval.append(1.0)
+        # minimize sum of squared jerks
+        if self.minimize == "v":
+            for t in range(self.H+1):
+                for j in range(self.dim):
+                    self._Prow.append(self._vidx(t, j))
+                    self._Pcol.append(self._vidx(t, j))
+                    self._Pval.append(1.0)
+        elif self.minimize == "a":
+            for t in range(self.H):
+                for j in range(self.dim):
+                    self._Prow.append(self._aidx(t, j))
+                    self._Pcol.append(self._aidx(t, j))
+                    self._Pval.append(1.0)
+        elif self.minimize == "j":
+            for t in range(self.H):
+                for j in range(self.dim):
+                    self._Prow.append(self._aidx(t, j))
+                    self._Pcol.append(self._aidx(t, j))
+                    self._Pval.append(2.0/self.t_step)
+                    if t>0:
+                        self._Prow.append(self._aidx(t-1, j))
+                        self._Pcol.append(self._aidx(t, j))
+                        self._Pval.append(-1.0/self.t_step)
+                        self._Prow.append(self._aidx(t, j))
+                        self._Pcol.append(self._aidx(t-1, j))
+                        self._Pval.append(-1.0/self.t_step)
+        else:
+            raise ValueError(f"minimize = {self.minimize}")
+
 
         # dynamics
         for t in range(self.H):
             for j in range(self.dim):
-                # q_{t+1} ==             q_t + v_t * t_step + a_t * t_step**2/2
-                # 0       == - q_{t+1} + q_t + v_t * t_step + a_t * t_step**2/2
                 self._constrain(self._qidx(t+1, j), -1.0)
                 self._constrain(self._qidx(t, j), 1.0)
                 self._constrain(self._vidx(t, j), self.t_step)
@@ -206,6 +230,32 @@ class _PegMotionQP:
                 self._constrain(self._aidx(t, j), 1.0)
                 self._bound(-self.max_acc[j], self.max_acc[j])
 
+        # jerk limits
+        if self.max_jerk is not None:                
+            for t in range(1, self.H):
+                for j in range(self.dim):
+                    # (a_{t+1} - (a_t))/t_step <= jerk
+                    self._constrain(self._aidx(t-1, j), -1.0)
+                    self._constrain(self._aidx(t, j), 1.0)
+                    self._bound(-self.max_jerk[j]*self.t_step, self.max_jerk[j]*self.t_step)
+
+            if a_prev is not None:
+                for j in range(self.dim):
+                    # (a_{0} - (a_{prev})) <= jerk*t_step
+                    # a_{0} <= jerk*t_step + a_prev
+                    self._constrain(self._aidx(0, j), 1.0)
+                    self._bound(-self.max_jerk[j]*self.t_step + a_prev[j], self.max_jerk[j]*self.t_step + a_prev[j])
+
+            if a_next is not None:
+                for j in range(self.dim):
+                    # (a_{next} - (a_{h-1})) <= jerk*t_step
+                    # -a_{h-1} <= jerk*t_step - a_next
+                    self._constrain(self._aidx(self.H-1, j), -1.0)
+                    self._bound(-self.max_jerk[j]*self.t_step - a_next[j], self.max_jerk[j]*self.t_step - a_next[j])
+                
+
+            
+
     def constrain_q(self, t, q):
         """Adds a constraint for time t to a at configuration"""
         for j in range(self.dim):
@@ -219,6 +269,11 @@ class _PegMotionQP:
             self._bound(v[j], v[j])
 
     def constrain_pos(self, t, q_prev, pos, tolerance, penalty):
+        # fk(q') == tgt +/- tol
+        # fk(q') = fk(q) + J (q' - q)
+        # fk(q) + J (q' - q) == tgt
+        # fk(q) + J q' - J q == tgt
+        # J q' == tgt + J q - fk(q)
         scale = 10.0
         J_prev = self.robot.jacobian(q_prev)[0]
         p_prev = self.robot.fk(q_prev)[:3,3]
@@ -285,12 +340,15 @@ class _PegMotionQP:
         q = np.array(self._q)
         l = np.array(self._l)
         u = np.array(self._u)
-        solver.setup(P=P, q=q, A=A, l=l, u=u, eps_abs=1e-5, eps_rel=1e-5, max_iter=10000, adaptive_rho=True, adaptive_rho_interval=100, verbose=False, rho=0.1)
+        eps = 1e-5
+        solver.setup(P=P, q=q, A=A, l=l, u=u, eps_abs=eps, eps_rel=eps, max_iter=100000, adaptive_rho=True, adaptive_rho_interval=100, verbose=False, rho=0.1)
         if x_prev is not None:
             solver.warm_start(x=x_prev)
 
         r = solver.solve()
         if r.info.status != "solved":
+            if r.info.status == "solved inaccurate":
+                print(r.info.status)
             return None
 
         return r.x
@@ -314,19 +372,23 @@ class _PegMotionQP:
     #         return None
 
     #     return r.x
-        
-
 
 class PegMotionOptimizerV2b:
-    def __init__(self, max_vel, max_acc, t_step):
+    def __init__(self, max_vel, max_acc, t_step, interpolation_steps=9, max_jerk=None, minimize='a'):
         self.max_vel = max_vel
         self.max_acc = max_acc
-        self.t_step = t_step
+        self.max_jerk = max_jerk
+        self.minimize = minimize
+        self.t_step = t_step * interpolation_steps
+        self.interpolation_steps = interpolation_steps
+
+    def _new_qp(self, H, a_prev=None, a_next=None):
+        return _PegMotionQP(H=H, t_step=self.t_step, max_vel=self.max_vel, max_acc=self.max_acc, max_jerk=self.max_jerk, minimize=self.minimize, a_prev=a_prev, a_next=a_next)
 
     def compute_lift(self, q0, q1, H=25):
         dim = 6
         robot = dvrkKinematics()
-        qp = _PegMotionQP(H=H, t_step=self.t_step)
+        qp = self._new_qp(H, a_prev=np.zeros(6))
         qp.constrain_q(0, q0)
         qp.constrain_v(0, np.zeros(6))
         qp.constrain_q(H, q1)
@@ -336,8 +398,9 @@ class PegMotionOptimizerV2b:
         p1 = robot.fk(q1)[:3,3]
 
         for h in range(H-1, 3, -1):
+            #print(f"solve h={h}, lift")
             # for iter_no in range(3):
-            qp = _PegMotionQP(H=h, t_step=self.t_step)
+            qp = self._new_qp(h, a_prev=np.zeros(6))
             qp.constrain_q(0, q0)
             qp.constrain_v(0, np.zeros(6))
             qp.constrain_q(h, q1)
@@ -356,7 +419,7 @@ class PegMotionOptimizerV2b:
 
     def compute_drop(self, q2, q3, H=25):
         robot = dvrkKinematics()
-        qp = _PegMotionQP(H=H, t_step=self.t_step)
+        qp = self._new_qp(H, a_next=np.zeros(6))
         qp.constrain_q(0, q2)
         qp.constrain_q(H, q3)
         qp.constrain_v(H, np.zeros(6))
@@ -366,7 +429,8 @@ class PegMotionOptimizerV2b:
         p3 = robot.fk(q3)[:3,3]
 
         for h in range(H-1, 3, -1):
-            qp = _PegMotionQP(H=h, t_step=self.t_step)
+            #print(f"solve h={h}, drop")
+            qp = self._new_qp(h, a_next=np.zeros(6))
             qp.constrain_q(0, q2)
             qp.constrain_q(h, q3)
             qp.constrain_v(h, np.zeros(6))
@@ -388,14 +452,20 @@ class PegMotionOptimizerV2b:
         # Hard code: 0.75 second upper limit of lift/drop time
         x01,t01 = self.compute_lift(q0, q1, H=int(0.75/self.t_step))
         x23,t23 = self.compute_drop(q2, q3, H=int(0.75/self.t_step))
-        
+
         v01i = (t01+1)*dim + t01*dim
         v23i = (t23+1)*dim
 
-        # Hard code: 1.5 second upper limit of time between lift and drop
-        t12 = int(1.5/self.t_step)
+        a1i = (t01*3+1)*dim # (t01+1) + (t01+1) + (t01-1)
+        a_prev = x01[a1i:a1i+6]
+        a2i = (t23*2+2)*dim
+        a_next = x23[a2i:a2i+6]
+
+        # Hard code: 2.0 second upper limit of time between lift and drop
+        t12 = int(2.0/self.t_step)
         for h in range(t12, 3, -1):
-            qp = _PegMotionQP(h, t_step=self.t_step)
+            #print(f"solve h={h}, motion")
+            qp = self._new_qp(h, a_prev=a_prev, a_next=a_next)
             qp.constrain_q(0, q1)
             qp.constrain_v(0, x01[v01i:v01i+dim])
             qp.constrain_q(h, q2)
@@ -406,283 +476,427 @@ class PegMotionOptimizerV2b:
             x12,t12 = x12_next,h
 
         H = t01 + t12 + t23
-        x = np.zeros((H+1)*3*dim - dim)
-        
-        x[0:(t01+1)*dim] = x01[0:(t01+1)*dim]
-        x[(t01+1)*dim:(t01+t12)*dim] = x12[dim:t12*dim]
-        x[(t01+t12)*dim:(H+1)*dim] = x23[0:(t23+1)*dim]
+        # x = np.zeros((H+1)*3*dim - dim)
+        # x[0:(t01+1)*dim] = x01[0:(t01+1)*dim]
+        # x[(t01+1)*dim:(t01+t12)*dim] = x12[dim:t12*dim]
+        # x[(t01+t12)*dim:(H+1)*dim] = x23[0:(t23+1)*dim]
 
+        v01 = (t01+1)*dim
+        v12 = (t12+1)*dim
+        v23 = (t23+1)*dim
+        a01 = v01*2
+        a12 = v12*2
+        a23 = v23*2
+        
+        x03 = np.concatenate((
+            x01[0  :      t01*dim], x12[0  :      t12*dim], x23[0  :      (t23+1)*dim],
+            x01[v01:v01 + t01*dim], x12[v12:v12 + t12*dim], x23[v23:v23 + (t23+1)*dim],
+            x01[a01:a01 + t01*dim], x12[a12:a12 + t12*dim], x23[a23:a23 + t23*dim]))
+
+        if self.interpolation_steps > 1:
+            x03 = interpolate(x03, H, self.t_step, H*self.interpolation_steps, self.t_step/self.interpolation_steps)
+            H *= self.interpolation_steps
+
+        # assert(np.shape(x03) == np.shape(x))
+        # assert(np.all(np.abs(x[0:(H+1)*dim] - x03[0:(H+1)*dim]) < 1e-5))
         print(t01, t12, t23)
-        return x,H
+        return x03,H
+
+    def optimize_lift_to_handover_motion(self, q0, q1, q2):
+        '''Computes a motion that starts with a vertical lift
+
+        q0 is the start of the lift
+        q1 is the end of the lift
+        q2 is the handover point
+        '''
+        dim = 6
+
+        # Hard code: 0.75 second upper limit of lift/drop time
+        x01,t01 = self.compute_lift(q0, q1, H=int(0.75/self.t_step))
+        #x23,t23 = self.compute_drop(q2, q3, H=int(0.75/self.t_step))
+        
+        v01i = (t01+1)*dim + t01*dim
+        a1i = (t01*3+1)*dim
+        a_prev = x01[a1i:a1i+6]
+        # v23i = (t23+1)*dim
+
+        # Hard code: 2.0 second upper limit of time between lift and drop
+        t12 = int(2.0/self.t_step)
+        for h in range(t12, 3, -1):
+            qp = self._new_qp(h, a_prev=a_prev, a_next=np.zeros(6))
+            qp.constrain_q(0, q1)
+            qp.constrain_v(0, x01[v01i:v01i+dim])
+            qp.constrain_q(h, q2)
+            qp.constrain_v(h, np.zeros(6))
+            x12_next = qp.solve()
+            if x12_next is None:
+                break
+            x12,t12 = x12_next,h
+
+        H = t01 + t12
+        # x = np.zeros((H+1)*3*dim - dim)
+        
+        # x[0:(t01+1)*dim] = x01[0:(t01+1)*dim]
+        # x[(t01+1)*dim:(H+1)*dim] = x12[dim:(t12+1)*dim]
+        # #x[(t01+t12)*dim:(H+1)*dim] = x23[0:(t23+1)*dim]
+
+        v01 = (t01+1)*dim
+        v12 = (t12+1)*dim
+        a01 = v01*2
+        a12 = v12*2
+
+        x02 = np.concatenate((
+            x01[0  :      t01*dim], x12[0  :      (t12+1)*dim],
+            x01[v01:v01 + t01*dim], x12[v12:v12 + (t12+1)*dim],
+            x01[a01:a01 + t01*dim], x12[a12:a12 + t12*dim]))
+
+        if self.interpolation_steps > 1:
+            x02 = interpolate(x02, H, self.t_step, H*self.interpolation_steps, self.t_step/self.interpolation_steps)
+            H *= self.interpolation_steps
+
+        print(t01, t12)
+        return x02,H
+
+    def optimize_handover_to_drop_motion(self, q1, q2, q3):
+        '''Computes a motion that ends with a vertical drop
+
+        q1 is the handover point
+        q2 is the start of the vertical drop
+        q3 is the end of the vertical drop
+        '''
+        dim = 6
+
+        # Hard code: 0.75 second upper limit of lift/drop time
+        # x01,t01 = self.compute_lift(q0, q1, H=int(0.75/self.t_step))
+        x23,t23 = self.compute_drop(q2, q3, H=int(0.75/self.t_step))
+        
+        # v01i = (t01+1)*dim + t01*dim
+        v23i = (t23+1)*dim # index of the velocity starting the drop motion
+        a2i = (t23*2+2)*dim
+        a_next = x23[a2i:a2i+6]
+
+        # Hard code: 2.0 second upper limit of time between lift and drop
+        t12 = int(2.0/self.t_step)
+        for h in range(t12, 3, -1):
+            #print(f"solve h={h}, drop")
+            qp = self._new_qp(h, a_prev=np.zeros(6), a_next=a_next)
+            qp.constrain_q(0, q1)
+            qp.constrain_v(0, np.zeros(6)) # start at zero velocity
+            qp.constrain_q(h, q2)
+            qp.constrain_v(h, x23[v23i:v23i+dim])
+            x12_next = qp.solve()
+            if x12_next is None:
+                break
+            x12,t12 = x12_next,h
+
+        H = t12 + t23
+        # x = np.zeros((H+1)*3*dim - dim)
+        
+        # # x[0:(t01+1)*dim] = x01[0:(t01+1)*dim]
+        # x[0:(t12+1)*dim] = x12[0:(t12+1)*dim]
+        # x[(t12+1)*dim:(H+1)*dim] = x23[dim:(t23+1)*dim]
+
+        v12 = (t12+1)*dim
+        v23 = (t23+1)*dim
+        a12 = v12*2
+        a23 = v23*2
+        
+        x13 = np.concatenate((
+            x12[0  :      t12*dim], x23[0  :      (t23+1)*dim],
+            x12[v12:v12 + t12*dim], x23[v23:v23 + (t23+1)*dim],
+            x12[a12:a12 + t12*dim], x23[a23:a23 + t23*dim]))
+
+        if self.interpolation_steps > 1:
+            x13 = interpolate(x13, H, self.t_step, H*self.interpolation_steps, self.t_step/self.interpolation_steps)
+            H *= self.interpolation_steps
+
+        print(t12, t23)
+        return x13,H
+
         
     
-class PegMotionOptimizerV2a:
-    def __init__(self, max_vel, max_acc, t_step=0.01):
-        self.robot = dvrkKinematics()
-        self.solver = None
-        self.max_vel = max_vel
-        self.max_acc = max_acc
-        self.t_step = t_step
+# class PegMotionOptimizerV2a:
+#     def __init__(self, max_vel, max_acc, t_step=0.01):
+#         self.robot = dvrkKinematics()
+#         self.solver = None
+#         self.max_vel = max_vel
+#         self.max_acc = max_acc
+#         self.t_step = t_step
 
-    # def optimize_lift(self, q0, q1, v0, v1, H):
-    #     dim = 6
-    #     P,A,q,l,u = [],[],[],[],[]
+#     # def optimize_lift(self, q0, q1, v0, v1, H):
+#     #     dim = 6
+#     #     P,A,q,l,u = [],[],[],[],[]
         
-    #     x_prev = np.zeros(n)
-    #     for t in range(H):
-    #         for j in range(dim):
-    #             x_prev.append(
+#     #     x_prev = np.zeros(n)
+#     #     for t in range(H):
+#     #         for j in range(dim):
+#     #             x_prev.append(
 
-    #     # boundary conditions
-    #     for t,qi,vi in [[0, q0, v0], [H, q1, v1]]:
-    #         for j in range(dim):
-    #             A.append([len(l), q_var(t, j), 1.0])
-    #             l.append(qi[j])
-    #             u.append(qi[i])
-    #         if vi is not None:
-    #             for j in range(dim):
-    #                 A.append([len(l), v_var(t, j), 1.0])
-    #                 l.append(vi[j])
-    #                 u.append(vi[j])
-    #     # dynamics
-    #     for t in range(H):
-    #         for j in range(dim):
-    #             A.append([len(l), q_var(t+1, j), -1.0])
-    #             A.append([len(l), q_var(t, j), 1.0])
-    #             A.append([len(l), v_var(t, j), t_step])
-    #             A.append([len(l), a_var(t, j), t_step*t_step/2])
-    #             l.append(0.0)
-    #             u.append(0.0)
-    #             A.append([len(l), v_var(t+1, j), -1.0])
-    #             A.append([len(l), v_var(t, j), 1.0])
-    #             A.append([len(l), a_var(t, j), t_step])
-    #             l.append(0.0)
-    #             u.append(0.0)
+#     #     # boundary conditions
+#     #     for t,qi,vi in [[0, q0, v0], [H, q1, v1]]:
+#     #         for j in range(dim):
+#     #             A.append([len(l), q_var(t, j), 1.0])
+#     #             l.append(qi[j])
+#     #             u.append(qi[i])
+#     #         if vi is not None:
+#     #             for j in range(dim):
+#     #                 A.append([len(l), v_var(t, j), 1.0])
+#     #                 l.append(vi[j])
+#     #                 u.append(vi[j])
+#     #     # dynamics
+#     #     for t in range(H):
+#     #         for j in range(dim):
+#     #             A.append([len(l), q_var(t+1, j), -1.0])
+#     #             A.append([len(l), q_var(t, j), 1.0])
+#     #             A.append([len(l), v_var(t, j), t_step])
+#     #             A.append([len(l), a_var(t, j), t_step*t_step/2])
+#     #             l.append(0.0)
+#     #             u.append(0.0)
+#     #             A.append([len(l), v_var(t+1, j), -1.0])
+#     #             A.append([len(l), v_var(t, j), 1.0])
+#     #             A.append([len(l), a_var(t, j), t_step])
+#     #             l.append(0.0)
+#     #             u.append(0.0)
 
-    #     # limits
-    #     for t in range(0,H+1):
-    #         for j in range(dim):
-    #             A.append([len(l), v_var(t, j), 1])
-    #             l.append(-max_vel[j])
-    #             u.append( max_vel[j])
+#     #     # limits
+#     #     for t in range(0,H+1):
+#     #         for j in range(dim):
+#     #             A.append([len(l), v_var(t, j), 1])
+#     #             l.append(-max_vel[j])
+#     #             u.append( max_vel[j])
                 
-    #     # limits
-    #     for t in range(0,H):
-    #         for j in range(dim):
-    #             A.append([len(l), a_var(t, j), 1])
-    #             l.append(-max_acc[j])
-    #             u.append( max_acc[j])
+#     #     # limits
+#     #     for t in range(0,H):
+#     #         for j in range(dim):
+#     #             A.append([len(l), a_var(t, j), 1])
+#     #             l.append(-max_acc[j])
+#     #             u.append( max_acc[j])
 
-    #     # objective: sum of squared velocities
-    #     for t in range(H):
-    #         for j in range(dim):
-    #             P.append([v_var(t,j), v_var(t,j), 1.0])
+#     #     # objective: sum of squared velocities
+#     #     for t in range(H):
+#     #         for j in range(dim):
+#     #             P.append([v_var(t,j), v_var(t,j), 1.0])
 
-    #     for t in range(1,H):
-    #         q_prev = x_prev[q_var(t):q_var(t+1)]
-    #         J_prev = self.robot.jacobian(q_prev)
-    #         p_prev = self.robot.fk(q_prev)
-    #         for i in [0,1]: # x and y
-    #             penalize_next_constraint(q, A, l, u, penalty)
-    #             bc = center_pos[i] - p_prev[i]
-    #             for j in range(dim):
-    #                 A.append([len(l), q_var(t, j), J_prev[i][j] * peg_scale])
-    #                 bc += J_prev[i][j] * q_prev[j]
-    #             l.append((bc - peg_gap) * peg_scale)
-    #             u.append((bc + peg_gap) * peg_scale)
+#     #     for t in range(1,H):
+#     #         q_prev = x_prev[q_var(t):q_var(t+1)]
+#     #         J_prev = self.robot.jacobian(q_prev)
+#     #         p_prev = self.robot.fk(q_prev)
+#     #         for i in [0,1]: # x and y
+#     #             penalize_next_constraint(q, A, l, u, penalty)
+#     #             bc = center_pos[i] - p_prev[i]
+#     #             for j in range(dim):
+#     #                 A.append([len(l), q_var(t, j), J_prev[i][j] * peg_scale])
+#     #                 bc += J_prev[i][j] * q_prev[j]
+#     #             l.append((bc - peg_gap) * peg_scale)
+#     #             u.append((bc + peg_gap) * peg_scale)
             
 
-    def optimize_motion(self, q0, q1, q2, q3, max_vel, max_acc, t_step=0.01, horizon=50, print_out=False, visualize=False):
-        dim = 6
-        H = horizon
+#     def optimize_motion(self, q0, q1, q2, q3, max_vel, max_acc, t_step=0.01, horizon=50, print_out=False, visualize=False):
+#         dim = 6
+#         H = horizon
 
-        v0index = dim*(H+1)
-        a0index = v0index*2
-        n = v0index*3-dim
+#         v0index = dim*(H+1)
+#         a0index = v0index*2
+#         n = v0index*3-dim
 
-        # 0 = time at q0
-        t1 = 19   # time at q1
-        t2 = H-18 # time at q2
-        # H = time at q3
+#         # 0 = time at q0
+#         t1 = 19   # time at q1
+#         t2 = H-18 # time at q2
+#         # H = time at q3
 
-        # x = [ q_{t=0,j=0:6}, q_{t=1,j=0:6}, ... ,
-        #       v_{t=0,j=0:6}, v_{t=1,j=0:6}, ... , 
-        #       a_{t=0,j=0:6}, a_{t=1,j=0:6}, ... ,
-        #       penalty variables ]
-        def q_var(t, j=0):  # q_var(2, 5) = index of configuration at time = 2, for joint 5
-            return t*dim + j
-        def v_var(t, j=0):
-            return v0index + t*dim + j
-        def a_var(t, j=0):
-            return a0index + t*dim + j
+#         # x = [ q_{t=0,j=0:6}, q_{t=1,j=0:6}, ... ,
+#         #       v_{t=0,j=0:6}, v_{t=1,j=0:6}, ... , 
+#         #       a_{t=0,j=0:6}, a_{t=1,j=0:6}, ... ,
+#         #       penalty variables ]
+#         def q_var(t, j=0):  # q_var(2, 5) = index of configuration at time = 2, for joint 5
+#             return t*dim + j
+#         def v_var(t, j=0):
+#             return v0index + t*dim + j
+#         def a_var(t, j=0):
+#             return a0index + t*dim + j
 
-        # initialize x by interpolation
-        x_prev = np.zeros(n)
-        for t in range(0, t1):
-            p = t/t1
-            x_prev[q_var(t):q_var(t+1)] = q0*(1-p) + q1*p
+#         # initialize x by interpolation
+#         x_prev = np.zeros(n)
+#         for t in range(0, t1):
+#             p = t/t1
+#             x_prev[q_var(t):q_var(t+1)] = q0*(1-p) + q1*p
 
-        for t in range(t1, t2+1):
-            p = (t-t1)/(t2-t1)
-            x_prev[q_var(t):q_var(t+1)] = q1*(1-p) * q2*p
+#         for t in range(t1, t2+1):
+#             p = (t-t1)/(t2-t1)
+#             x_prev[q_var(t):q_var(t+1)] = q1*(1-p) * q2*p
 
-        for t in range(t2, H+1):
-            p = (t - t2)/(H+1-t2)
-            x_prev[q_var(t):q_var(t+1)] = q2*(1-p) * q2*p
+#         for t in range(t2, H+1):
+#             p = (t - t2)/(H+1-t2)
+#             x_prev[q_var(t):q_var(t+1)] = q2*(1-p) * q2*p
                 
-        for t in range(H):
-            x_prev[v_var(t):v_var(t+1)] = (x_prev[q_var(t+1):q_var(t+2)] - x_prev[q_var(t):q_var(t+1)])/t_step
+#         for t in range(H):
+#             x_prev[v_var(t):v_var(t+1)] = (x_prev[q_var(t+1):q_var(t+2)] - x_prev[q_var(t):q_var(t+1)])/t_step
                 
-        for t in range(H):
-            x_prev[a_var(t):a_var(t+1)] = (x_prev[v_var(t+1):v_var(t+2)] - x_prev[v_var(t):v_var(t+1)])/t_step
+#         for t in range(H):
+#             x_prev[a_var(t):a_var(t+1)] = (x_prev[v_var(t+1):v_var(t+2)] - x_prev[v_var(t):v_var(t+1)])/t_step
 
 
-        penalty = 1e5
-        for iter_no in range(5):
-            # set up a QP in the form:
-            #
-            # min 1/2 x^T P x + q^T x
-            # s.t. l <= A x <= u
-            P,A,q,l,u = [],[],[0.0]*n,[],[]
+#         penalty = 1e5
+#         for iter_no in range(5):
+#             # set up a QP in the form:
+#             #
+#             # min 1/2 x^T P x + q^T x
+#             # s.t. l <= A x <= u
+#             P,A,q,l,u = [],[],[0.0]*n,[],[]
         
-            # hit each waypoint
-            for t,qi in [[0, q0], [H, q3], [t1, q1], [t2, q2]]:
-                for j in range(dim):
-                    # q_{t,j} = qi[j]
-                    A.append([len(l), q_var(t, j), 1.0])
-                    l.append(qi[j])
-                    u.append(qi[j])
+#             # hit each waypoint
+#             for t,qi in [[0, q0], [H, q3], [t1, q1], [t2, q2]]:
+#                 for j in range(dim):
+#                     # q_{t,j} = qi[j]
+#                     A.append([len(l), q_var(t, j), 1.0])
+#                     l.append(qi[j])
+#                     u.append(qi[j])
 
-            # start and stop at v=0
-            for t in [0, H]:
-                for j in range(dim):
-                    A.append([len(l), v_var(t, j), 1])
-                    l.append(0.0)
-                    u.append(0.0)
+#             # start and stop at v=0
+#             for t in [0, H]:
+#                 for j in range(dim):
+#                     A.append([len(l), v_var(t, j), 1])
+#                     l.append(0.0)
+#                     u.append(0.0)
                                     
-            # dynamics
-            # q_{t+1} = q_{t} + v_{t} * t_step + a_{t} * t_step**2 / 2
-            # v_{t+1} = v_{t} + a_{t} * t_step
-            for t in range(H):
-                for j in range(dim):
-                    A.append([len(l), q_var(t+1, j), -1.0])
-                    A.append([len(l), q_var(t, j), 1.0])
-                    A.append([len(l), v_var(t, j), t_step])
-                    A.append([len(l), a_var(t, j), t_step*t_step/2])
-                    l.append(0.0)
-                    u.append(0.0)
-                    A.append([len(l), v_var(t+1, j), -1.0])
-                    A.append([len(l), v_var(t, j), 1.0])
-                    A.append([len(l), a_var(t, j), t_step])
-                    l.append(0.0)
-                    u.append(0.0)
+#             # dynamics
+#             # q_{t+1} = q_{t} + v_{t} * t_step + a_{t} * t_step**2 / 2
+#             # v_{t+1} = v_{t} + a_{t} * t_step
+#             for t in range(H):
+#                 for j in range(dim):
+#                     A.append([len(l), q_var(t+1, j), -1.0])
+#                     A.append([len(l), q_var(t, j), 1.0])
+#                     A.append([len(l), v_var(t, j), t_step])
+#                     A.append([len(l), a_var(t, j), t_step*t_step/2])
+#                     l.append(0.0)
+#                     u.append(0.0)
+#                     A.append([len(l), v_var(t+1, j), -1.0])
+#                     A.append([len(l), v_var(t, j), 1.0])
+#                     A.append([len(l), a_var(t, j), t_step])
+#                     l.append(0.0)
+#                     u.append(0.0)
 
-            # velocity and acceleration limits
-            if True:
-                for t in range(0,H+1):
-                    for j in range(dim):
-                        A.append([len(l), v_var(t, j), 1.0])
-                        l.append(-max_vel[j])
-                        u.append(max_vel[j])
-            if True:
-                for t in range(0,H):
-                    for j in range(dim):
-                        A.append([len(l), a_var(t, j), 1.0])
-                        l.append(-max_acc[j])
-                        u.append( max_acc[j])
+#             # velocity and acceleration limits
+#             if True:
+#                 for t in range(0,H+1):
+#                     for j in range(dim):
+#                         A.append([len(l), v_var(t, j), 1.0])
+#                         l.append(-max_vel[j])
+#                         u.append(max_vel[j])
+#             if True:
+#                 for t in range(0,H):
+#                     for j in range(dim):
+#                         A.append([len(l), a_var(t, j), 1.0])
+#                         l.append(-max_acc[j])
+#                         u.append( max_acc[j])
 
-            # Objective: minimize sum-of-squared velocities
-            #           [ 1 0    ]
-            # 1/2 v^T *   0 1    ] * v
-            #                ... ]
-            for t in range(H):
-                for j in range(dim):
-                    P.append([v_var(t,j), v_var(t,j), 1.0])
+#             # Objective: minimize sum-of-squared velocities
+#             #           [ 1 0    ]
+#             # 1/2 v^T *   0 1    ] * v
+#             #                ... ]
+#             for t in range(H):
+#                 for j in range(dim):
+#                     P.append([v_var(t,j), v_var(t,j), 1.0])
         
 
-            # Use Jacobian to enforce that velocity in x and y is zero.
-            # (0,0,+) = J * v
-            #
-            # p1 = p0 + J (q1 - q0)
-            # p1 = p0 + J q1 - J q0
-            #
-            # lb             <= p1 <= ub
-            #             lb <= p0 + J q1 - J q0 <= ub
-            # lb + J q0 - p0 <=      J q1        <= ub + J q0 - p0
-            peg_scale = 1e1
-            peg_gap = 1e-3
+#             # Use Jacobian to enforce that velocity in x and y is zero.
+#             # (0,0,+) = J * v
+#             #
+#             # p1 = p0 + J (q1 - q0)
+#             # p1 = p0 + J q1 - J q0
+#             #
+#             # lb             <= p1 <= ub
+#             #             lb <= p0 + J q1 - J q0 <= ub
+#             # lb + J q0 - p0 <=      J q1        <= ub + J q0 - p0
+#             peg_scale = 1e1
+#             peg_gap = 1e-3
 
-            if True:
-                peg_pos = [ 0.145, -0.018 ] # TODO: get from data
-                for t in range(1, t1):
-                    J = self.robot.jacobian(x_prev[q_var(t):q_var(t+1)])[0]
-                    p0 = self.robot.fk(x_prev[q_var(t):q_var(t+1)])[:3,3]
-                    for i in [0,1]: # x and y
-                        penalize_next_constraint(q, A, l, u, penalty)                        
-                        bc = peg_pos[i] - p0[i] # bounds center
-                        for j in range(dim):
-                            A.append([len(l), q_var(t, j), J[i][j] * peg_scale])
-                            bc += J[i][j] * x_prev[q_var(t, j)]
-                        l.append((bc - peg_gap) * peg_scale)
-                        u.append((bc + peg_gap) * peg_scale)
+#             if True:
+#                 peg_pos = [ 0.145, -0.018 ] # TODO: get from data
+#                 for t in range(1, t1):
+#                     J = self.robot.jacobian(x_prev[q_var(t):q_var(t+1)])[0]
+#                     p0 = self.robot.fk(x_prev[q_var(t):q_var(t+1)])[:3,3]
+#                     for i in [0,1]: # x and y
+#                         penalize_next_constraint(q, A, l, u, penalty)                        
+#                         bc = peg_pos[i] - p0[i] # bounds center
+#                         for j in range(dim):
+#                             A.append([len(l), q_var(t, j), J[i][j] * peg_scale])
+#                             bc += J[i][j] * x_prev[q_var(t, j)]
+#                         l.append((bc - peg_gap) * peg_scale)
+#                         u.append((bc + peg_gap) * peg_scale)
 
-                peg_pos = [ 0.110, -0.032 ]
-                for t in range(t2+1,H):
-                    J = self.robot.jacobian(x_prev[q_var(t):q_var(t+1)])[0]
-                    p0 = self.robot.fk(x_prev[q_var(t):q_var(t+1)])[:3,3]
-                    print(t,p0)
-                    for i in [0,1]:
-                        penalize_next_constraint(q, A, l, u, penalty)                        
-                        bc = peg_pos[i] - p0[i] # bounds center
-                        for j in range(dim):
-                            A.append([len(l), q_var(t, j), J[i][j] * peg_scale])
-                            bc += J[i][j] * x_prev[q_var(t, j)]
-                        l.append((bc - peg_gap) * peg_scale)
-                        u.append((bc + peg_gap) * peg_scale)
+#                 peg_pos = [ 0.110, -0.032 ]
+#                 for t in range(t2+1,H):
+#                     J = self.robot.jacobian(x_prev[q_var(t):q_var(t+1)])[0]
+#                     p0 = self.robot.fk(x_prev[q_var(t):q_var(t+1)])[:3,3]
+#                     print(t,p0)
+#                     for i in [0,1]:
+#                         penalize_next_constraint(q, A, l, u, penalty)                        
+#                         bc = peg_pos[i] - p0[i] # bounds center
+#                         for j in range(dim):
+#                             A.append([len(l), q_var(t, j), J[i][j] * peg_scale])
+#                             bc += J[i][j] * x_prev[q_var(t, j)]
+#                         l.append((bc - peg_gap) * peg_scale)
+#                         u.append((bc + peg_gap) * peg_scale)
                     
 
-            n = len(q)
-            m = len(l)
-            A = sparse.csc_matrix(([v for r,c,v in A], ([r for r,c,v in A], [c for r,c,v in A])), shape=(m,n))
-            P = sparse.csc_matrix(([v for r,c,v in P], ([r for r,c,v in P], [c for r,c,v in P])), shape=(n,n))
+#             n = len(q)
+#             m = len(l)
+#             A = sparse.csc_matrix(([v for r,c,v in A], ([r for r,c,v in A], [c for r,c,v in A])), shape=(m,n))
+#             P = sparse.csc_matrix(([v for r,c,v in P], ([r for r,c,v in P], [c for r,c,v in P])), shape=(n,n))
 
-            q = np.array(q)
-            self.solver = osqp.OSQP()
-            self.solver.setup(P=P, q=q, A=A, l=l, u=u, eps_abs=1e-5, eps_rel=1e-5, max_iter=100000)
-            if x_prev.shape[0] == n:
-                self.solver.warm_start(x=x_prev)
-            # TODO: update on subsequent iterations
-            # self.solver.update(Ax=A, l=l, u=u)
+#             q = np.array(q)
+#             self.solver = osqp.OSQP()
+#             self.solver.setup(P=P, q=q, A=A, l=l, u=u, eps_abs=1e-5, eps_rel=1e-5, max_iter=100000)
+#             if x_prev.shape[0] == n:
+#                 self.solver.warm_start(x=x_prev)
+#             # TODO: update on subsequent iterations
+#             # self.solver.update(Ax=A, l=l, u=u)
                 
-            r = self.solver.solve()
-            if r.info.status != "solved":
-                return None
-            x_prev = r.x
-            assert(x_prev.shape[0] == n)
+#             r = self.solver.solve()
+#             if r.info.status != "solved":
+#                 return None
+#             x_prev = r.x
+#             assert(x_prev.shape[0] == n)
             
-        #print(r.x)
-        return x_prev
+#         #print(r.x)
+#         return x_prev
 
 
 if __name__ == "__main__":
-    # dvrkVar.v_max,
-    max_vel = [1.0, 1.0, 1.0, 8.0, 8.0, 8.0]     # max velocity (rad/s) or (m/s)
-    # dvrkVar.a_max
-    max_acc = [1.0, 1.0, 1.0, 8.0, 8.0, 8.0]     # max acceleration (rad/s^2) or (m/s^2)
-    t_step = 0.1
-    opt = PegMotionOptimizerV2b(max_vel, max_acc, t_step)
-    
-    waypoints = np.load("traj_opt/script/ref_waypoints.npy")
-
+    opt = PegMotionOptimizerV2b(max_vel=dvrkVar.v_max, max_acc=dvrkVar.a_max, t_step=0.1)
+    waypoints = np.load("script/ref_waypoints.npy")
     wp = waypoints[0]
-    robot = dvrkKinematics()
-    #print("wp0:", robot.fk(wp[2])[:3,3])
-    #print("wp1:", robot.fk(wp[3])[:3,3])
-    #H = 72
+
     start = time.time()
-    x,H = opt.optimize_motion(*wp) #, max_vel=max_vel, max_acc=max_acc, t_step=0.03, horizon=H)
+    x, H = opt.optimize_motion(*wp)
     elapsed = time.time() - start
     print("Solve time:", elapsed)
+
+    if x is not None:
+        dim = 6
+        q0 = np.array([x[t*dim:(t+1)*dim] for t in range(H+1)])
+        v0 = np.array([x[(H+1+t)*dim:(H+2+t)*dim] for t in range(H+1)])
+        a0 = np.array([x[(2*H+2+t)*dim:(2*H+3+t)*dim] for t in range(H+1)])
+
+    import pdb; pdb.set_trace()
+    t_step = 0.100
+    interpolation_steps = 10
+    for t in range(H+1):
+        # get the configuration, vel, and acc at time t in the trajectory
+        q0 = traj.config(t)
+        # x[t:t * 6]
+
+        v0 = traj.velocity(t)
+        # x[(H + 1 + t) * 6:(H + 2 + t) * 6]
+
+        a0 = traj.acceleration(t)
+        for j in range(interpolation_steps):
+            s = j * t_step / interpolation_steps
+            q = q0 + v0 * s + a0 * s ** 2 / 2  # <- this is the interpolated config.
+            v = v0 + a0 * s  # <- this is the interpolated velocity
+            t = t_step + s  # <- this is the actual time of this config
+
     if x is not None:
         dim = 6
         with open("peg_motion_optimizer_v2.gp", "w") as f:

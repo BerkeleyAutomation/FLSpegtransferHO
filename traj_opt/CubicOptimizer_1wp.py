@@ -1,6 +1,8 @@
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
+
 plt.style.use('seaborn-whitegrid')
 # plt.style.use('bmh')
 # plt.rc('font', size=12)          # controls default text sizes
@@ -13,14 +15,16 @@ plt.style.use('seaborn-whitegrid')
 
 
 class CubicOptimizer_1wp:
-    def __init__(self):
+    def __init__(self, max_vel, max_acc, t_step=0.01, print_out=False, visualize=False):
         self.q0 = []
         self.qw = []
         self.qf = []
         self.dqw = []
-        self.max_vel = []
-        self.max_acc = []
-        self.t_step = []
+        self.max_vel = max_vel
+        self.max_acc = max_acc
+        self.t_step = t_step
+        self.print_out = print_out
+        self.visualize = visualize
 
     # calculate cubic coefficients of with minimim execution time
     def get_cubic_spline(self, q0, qf, v0, vf, tf_range=None):
@@ -29,7 +33,7 @@ class CubicOptimizer_1wp:
         v0 = np.array(v0)
         vf = np.array(vf)
         if tf_range is None:
-            tf_range = [0.1, 2.0, 0.01]
+            tf_range = [0.1, 4.0, 0.01]
         tf = np.arange(start=tf_range[0], stop=tf_range[1], step=tf_range[2]).reshape(-1,1)
         a = (vf * tf + v0 * tf + 2 * q0 - 2 * qf) / tf ** 3
         b = (vf - v0) / (2 * tf) - 3 / 2 * a * tf
@@ -74,14 +78,16 @@ class CubicOptimizer_1wp:
         cost_grad = (self.get_cost((k+dk)*self.dqw) - self.get_cost((k-dk)*self.dqw))/(2*dk)
         return cost_grad
 
-    def optimize(self, q0, qw, qf, dqw, max_vel, max_acc, t_step=0.01, print_out=False, visualize=False):
+    def optimize(self, q0, qw, qf):
         self.q0 = np.array(q0).squeeze()
         self.qw = np.array(qw).squeeze()
         self.qf = np.array(qf).squeeze()
+
+        # Calculate dqw1, dqw2
+        J = dvrkKinematics.jacobian(qw)
+        dvw = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+        dqw = np.linalg.inv(J).dot(dvw)
         self.dqw = np.array(dqw).squeeze() / np.linalg.norm(dqw)    # normalized gradient (direction)
-        self.max_vel = np.array(max_vel).squeeze()
-        self.max_acc = np.array(max_acc).squeeze()
-        self.t_step = np.array(t_step).squeeze()
 
         # initial guess
         K = 0.0
@@ -95,16 +101,16 @@ class CubicOptimizer_1wp:
             tf_min = self.get_cost(K*self.dqw)
             tf_mins.append(tf_min)
             Ks.append(K)
-            if print_out:
+            if self.print_out:
                 print (tf_min, K, count)
             if count > 100:
                 Ks = np.array(Ks)
                 tf_mins = np.array(tf_mins)
                 arg = np.argmin(tf_mins)
-                if print_out:
+                if self.print_out:
                     print("selected: ", tf_mins[arg], Ks[arg])
                 traj, t = self.combine_trajectory(Ks[arg]*self.dqw)
-                if visualize:
+                if self.visualize:
                     pos = traj
                     pos_prev = np.insert(pos, 0, pos[0], axis=0)
                     pos_prev = np.delete(pos_prev, -1, axis=0)

@@ -22,9 +22,8 @@ def format_dataset(q_des, q_act, H):
     return x, y
 
 # load data
-dir = "dataset/random_smooth_grey1_PSM1/"
-q_cmd = np.load(root + dir + "q_cmd.npy")
-q_phy = np.load(root + dir + "q_phy.npy")
+q_cmd = np.load("q_cmd.npy")
+q_phy = np.load("q_phy.npy")
 print ("data shape: ", np.shape(q_cmd))
 
 # plot training data
@@ -54,5 +53,5 @@ y_pred = np.concatenate((dummy, y_pred), axis=1)
 # plot_joint(x[:200], y[:200], y_pred[:200], show_window=False)
 # plot_hysteresis(x, y_pred, show_window=True)
 
-i=6
-model.save(root+'/models/grey1_PSM1/model_random_smooth_q56.out'+str(i))
+i=9
+model.save('model_random_smooth_q56.out'+str(i))

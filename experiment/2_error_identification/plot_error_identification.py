@@ -232,7 +232,7 @@ q_cmd_PSM1 = np.load(file_path+'q_cmd.npy')[:1000]
 file_path = root+'dataset/random_smooth_grey2_PSM2/'
 q_phy_PSM2 = np.load(file_path+'q_phy.npy')[:1000]
 q_cmd_PSM2 = np.load(file_path+'q_cmd.npy')[:1000]
-plot_joint_compare(q_cmd_PSM1, q_phy_PSM1, q_cmd_PSM2, q_phy_PSM2)
+plot_joint_compare(q_cmd_PSM2, q_phy_PSM2, q_cmd_PSM1, q_phy_PSM1)
 
 # (exp.1) randomly move all joints
 file_path = 'exp1/'

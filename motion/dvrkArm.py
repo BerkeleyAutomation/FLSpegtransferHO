@@ -1,15 +1,14 @@
 import numpy as np
 import threading
-import PyKDL
 import rospy
 from geometry_msgs.msg import Pose, PoseStamped
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool
 from std_msgs.msg import Float64
-from tf_conversions import posemath
-import FLSpegtransferHO.utils.CmnUtil as U
-import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
-from FLSpegtransferHO.motion.dvrkKinematics import dvrkKinematics
+# from tf_conversions import posemath
+import FLSpegtransfer.utils.CmnUtil as U
+import FLSpegtransfer.motion.dvrkVariables as dvrkVar
+from FLSpegtransfer.motion.dvrkKinematics import dvrkKinematics
 
 
 class dvrkArm(object):
@@ -18,18 +17,15 @@ class dvrkArm(object):
     def __init__(self, arm_name, ros_namespace='/dvrk'):
         # continuous publish from dvrk_bridge
         # actual(current) values
-        self.__act_pose_frame = PyKDL.Frame()
-        self.__act_pos = []
-        self.__act_rot = []     # quaternion
-        self.__act_jaw = []
         self.__act_joint = []
+        self.__act_jaw = []
         self.__act_motor_current = [0.0]*7
 
         # data members, event based
         self.__arm_name = arm_name
         self.__ros_namespace = ros_namespace
         self.__goal_reached_event = threading.Event()
-        self.__get_position_event = threading.Event()
+        # self.__get_position_event = threading.Event()
         self.__get_joint_event = threading.Event()
         self.__get_jaw_event = threading.Event()
         self.__get_motor_current_event = threading.Event()
@@ -71,8 +67,6 @@ class dvrkArm(object):
 
         self.__sub_list = [rospy.Subscriber(self.__full_ros_namespace + '/goal_reached',
                                           Bool, self.__goal_reached_cb),
-                           rospy.Subscriber(self.__full_ros_namespace + '/position_cartesian_current',
-                                          PoseStamped, self.__position_cartesian_current_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/state_joint_current',
                                             JointState, self.__position_joint_current_cb),
                            rospy.Subscriber(self.__full_ros_namespace + '/state_jaw_current',
@@ -87,9 +81,8 @@ class dvrkArm(object):
             rospy.logdebug(rospy.get_caller_id() + ' -> ROS already initialized')
 
         # wait until these are not empty
-        # self.__act_pos, _ = self.get_current_pose(wait_callback=True)
-        # self.__act_jaw = self.get_current_jaw(wait_callback=True)
         # self.__act_joint = self.get_current_joint(wait_callback=True)
+        # self.__act_jaw = self.get_current_jaw(wait_callback=True)
 
     def shutdown(self):
         rospy.signal_shutdown("Shutdown signal received.")
@@ -100,12 +93,6 @@ class dvrkArm(object):
     def __goal_reached_cb(self, data):
         self.__goal_reached = data.data
         self.__goal_reached_event.set()
-
-    def __position_cartesian_current_cb(self, data):
-        self.__act_pose_frame = posemath.fromMsg(data.pose)
-        self.__act_pos = [data.pose.position.x, data.pose.position.y, data.pose.position.z]
-        self.__act_rot = [data.pose.orientation.x, data.pose.orientation.y, data.pose.orientation.z, data.pose.orientation.w]
-        self.__get_position_event.set()
 
     def __position_joint_current_cb(self, data):
         self.__act_joint = list(data.position)
@@ -124,17 +111,8 @@ class dvrkArm(object):
     Get function
     """
     def get_current_pose(self, wait_callback=True):
-        if wait_callback:
-            self.__get_position_event.clear()
-            if self.__get_position_event.wait(20):  # 20 seconds at most
-                return self.__act_pos, self.get_rot_transform(self.__act_rot)
-            else:
-                return []
-        else:
-            return self.__act_pos, self.get_rot_transform(self.__act_rot)
-
-    def get_current_pose_frame(self):
-        return self.__act_pose_frame
+        joint = self.get_current_joint(wait_callback=wait_callback)
+        return dvrkKinematics.joint_to_pose(joint)
 
     def get_current_joint(self, wait_callback=True):
         if wait_callback:
@@ -183,41 +161,12 @@ class dvrkArm(object):
         msg.data = ratio
         self.__set_acceleration_ratio_pub.publish(msg)
 
-    def set_pose(self, pos, rot, use_ik=True, wait_callback=True):
+    def set_pose(self, pos, rot, wait_callback=True):
         assert not np.isnan(np.sum(pos))
         assert not np.isnan(np.sum(rot))
-        msg = Pose()
-        if pos==[]:
-            pos_cmd, _ = self.get_current_pose(wait_callback=True)
-        else:
-            pos_cmd = pos
-        msg.position.x = pos_cmd[0]
-        msg.position.y = pos_cmd[1]
-        msg.position.z = pos_cmd[2]
+        joint = np.squeeze(dvrkKinematics.pose_to_joint(pos, rot))  # SAM: sometimes need to squeeze to avoid ROS error
 
-        if rot==[]:
-            _, rot_cmd = self.get_current_pose(wait_callback=True)
-        else:
-            rot_cmd = rot
-        rot_transformed = self.set_rot_transform(rot_cmd)
-        msg.orientation.x = rot_transformed[0]
-        msg.orientation.y = rot_transformed[1]
-        msg.orientation.z = rot_transformed[2]
-        msg.orientation.w = rot_transformed[3]
-
-        if use_ik:
-            # convert to joint angles using IK
-            joint = dvrkKinematics.pose_to_joint(pos, rot)[0]
-            return self.set_joint(joint, wait_callback=wait_callback)
-        else:
-            if wait_callback:
-                self.__goal_reached_event.clear()
-                self.__set_position_goal_cartesian_pub.publish(msg)
-                self.__goal_reached_event.wait()  # 10 seconds at most:
-                return True
-            else:
-                self.__set_position_goal_cartesian_pub.publish(msg)
-                return True
+        self.set_joint(joint, wait_callback=wait_callback)
 
     # pose interpolation is based on 'cubic spline'
     def set_pose_interpolate(self, pos, rot, tf_init=0.5, t_step=0.01):
@@ -346,7 +295,7 @@ class dvrkArm(object):
         if np.allclose(q0, qf):
             return False
         else:
-            t, traj = self.Linear(q0, qf, v=[3.0], t_step=t_step)
+            t, traj = self.Linear(q0, qf, v=[6.0], t_step=t_step)
             # Execute trajectory
             for q in traj:
                 self.set_jaw_direct(q)
@@ -356,23 +305,24 @@ class dvrkArm(object):
     """
     Conversion function
     """
-    # Matching coordinate of the robot base and the end effector
-    def set_rot_transform(self, q):
-        qx, qy, qz, qw = q
-        R1 = PyKDL.Rotation.Quaternion(qx,qy,qz,qw)
-        R2 = PyKDL.Rotation.EulerZYX(-np.pi/2, 0, 0)  # rotate -90 (deg) around z-axis
-        R3 = PyKDL.Rotation.EulerZYX(0, np.pi, 0)  # rotate 180 (deg) around y-axis
-        R = R1 * R2 * R3
-        return R.GetQuaternion()
-
-    # Matching coordinate of the robot base and the end effector
-    def get_rot_transform(self, q):
-        qx, qy, qz, qw = q
-        R1 = PyKDL.Rotation.Quaternion(qx, qy, qz, qw)
-        R2 = PyKDL.Rotation.EulerZYX(0, np.pi, 0)  # rotate 180 (deg) around y-axis
-        R3 = PyKDL.Rotation.EulerZYX(-np.pi/2, 0, 0)  # rotate -90 (deg) around z-axis
-        R = R1 * R2.Inverse() * R3.Inverse()
-        return R.GetQuaternion()
+    # Depreciated. All poses are converted from joint angles
+    # # Matching coordinate of the robot base and the end effector
+    # def set_rot_transform(self, q):
+    #     qx, qy, qz, qw = q
+    #     R1 = PyKDL.Rotation.Quaternion(qx,qy,qz,qw)
+    #     R2 = PyKDL.Rotation.EulerZYX(-np.pi/2, 0, 0)  # rotate -90 (deg) around z-axis
+    #     R3 = PyKDL.Rotation.EulerZYX(0, np.pi, 0)  # rotate 180 (deg) around y-axis
+    #     R = R1 * R2 * R3
+    #     return R.GetQuaternion()
+    #
+    # # Matching coordinate of the robot base and the end effector
+    # def get_rot_transform(self, q):
+    #     qx, qy, qz, qw = q
+    #     R1 = PyKDL.Rotation.Quaternion(qx, qy, qz, qw)
+    #     R2 = PyKDL.Rotation.EulerZYX(0, np.pi, 0)  # rotate 180 (deg) around y-axis
+    #     R3 = PyKDL.Rotation.EulerZYX(-np.pi/2, 0, 0)  # rotate -90 (deg) around z-axis
+    #     R = R1 * R2.Inverse() * R3.Inverse()
+    #     return R.GetQuaternion()
 
 
     """
@@ -574,15 +524,33 @@ if __name__ == "__main__":
     # # rot2 = [0.0, 0.0, 0.0]
     # # q2 = U.euler_to_quaternion(rot2, unit='deg')
     # # jaw2 = [0.0]
-    # joint1 = [0.4, 0.0, 0.15, 0.0, 0.0, 0.0]
-    # joint2 = [-0.4, 0.0, 0.15, 0.0, 0.0, 0.0]
+    joint1 = [0.4, 0.0, 0.15, 0.0, 1.0, 0.0]
+    joint2 = [0.4, 0.0, 0.15, 0.0, -1.0, 0.0]
+    # q5 = joint1[4]
+    # q6 = (0.830634273)/(1.01857984)*q5
+    # joint1[-1] = q6
+    # q5 = joint2[4]
+    # q6 = (0.830634273)/(1.01857984)*q5
+    # joint2[-1] = q6
+
     # # p1.set_joint(joint=joint1)
     # # p1.set_joint(joint=joint2)
+    print ("started")
+    from scipy.spatial.transform import Rotation
+
+    joint = [0.0, 0.0, 0.15, 0.0, 0.0, 0.5]
+    pos, rot = dvrkKinematics.joint_to_pose(joint)
+    RR = U.quaternion_to_R(rot)
+    print (RR)
     while True:
-    #     # arm1.set_joint(joint=joint1)
-    #     # arm1.set_joint(joint=joint2)
-        arm1.set_pose_interpolate(pos=pos1, rot=q1)
-        arm1.set_pose_interpolate(pos=pos2, rot=q2)
+        pass
+        # time.sleep(1)
+        # arm1.set_joint(joint=joint2, wait_callback=True)
+        # print ("cleared")
+        # arm1.set_joint(joint=joint2, wait_callback=False)
+        # print ("joint 2 cleared")
+        # arm1.set_pose_interpolate(pos=pos1, rot=q1)
+        # arm1.set_pose_interpolate(pos=pos2, rot=q2)
     #     # arm1.set_joint_dinterpolate(joint=joint1, method='LSPB')
     #     # arm1.set_joint_interpolate(joint=joint2, method='LSPB')
     #     # print ("moved")

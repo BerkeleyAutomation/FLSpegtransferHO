@@ -14,7 +14,6 @@ def index_outlier(trajectory):
 # Trajectory check
 q_cmd = np.load('q_cmd.npy', allow_pickle=True)    # desired joint angles: [q0, ..., q6]
 q_phy = np.load('q_phy.npy', allow_pickle=True)    # actual joint angles: [q0, ..., q6]
-
 t_stamp = np.load('t_stamp.npy')    # measured time (sec)
 print('data length: ', len(q_cmd))
 

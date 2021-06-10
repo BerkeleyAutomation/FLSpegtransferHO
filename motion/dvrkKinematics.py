@@ -1,45 +1,9 @@
-# from robopy.base.serial_link import SerialLink
-# from robopy.base.serial_link import Revolute
-# from robopy.base.serial_link import Prismatic
-from math import pi
 import numpy as np
-# from robopy import transforms as tr
-# from robopy import graphics
-import FLSpegtransferHO.utils.CmnUtil as U
-import FLSpegtransferHO.motion.dvrkVariables as dvrkVar
+import FLSpegtransfer.utils.CmnUtil as U
+import FLSpegtransfer.motion.dvrkVariables as dvrkVar
+from scipy.spatial.transform import Rotation
+import time
 
-
-# class dvrkKinematics(SerialLink):
-#     def __init__(self):
-#         # self.qn = np.matrix([[0, pi / 4, pi, 0, pi / 4, 0]])
-#         # self.qr = np.matrix([[0, pi / 2, -pi / 2, 0, 0, 0]])
-#         # self.qz = np.matrix([[0, 0, 0, 0, 0, 0]])
-#         # self.qs = np.matrix([[0, 0, -pi / 2, 0, 0, 0]])
-#         # self.scale = 1
-#         # param = {
-#         #     "cube_axes_x_bounds": np.matrix([[-1.5, 1.5]]),
-#         #     "cube_axes_y_bounds": np.matrix([[-0.7, 1.5]]),
-#         #     "cube_axes_z_bounds": np.matrix([[-1.5, 1.5]]),
-#         #     "floor_position": np.matrix([[0, -0.7, 0]])
-#         # }
-#         links = [
-#             Revolute(j=0, theta=0, d=0, a=0, alpha=-pi/2, offset=pi/2, qlim=(-90 * np.pi / 180, 90 * np.pi / 180)),
-#             Revolute(j=0, theta=0, d=0, a=0, alpha=-pi/2, offset=pi/2, qlim=(-60 * np.pi / 180, 60 * np.pi / 180)),
-#             Prismatic(j=0, theta=0, d=0, a=0, alpha=0, offset=-dvrkVar.L1+dvrkVar.L2, qlim=(0, 0.5)),
-#             Revolute(j=0, theta=0, d=0, a=0, alpha=pi/2, offset=0, qlim=(-90 * np.pi / 180, 90 * np.pi / 180)),
-#             Revolute(j=0, theta=0, d=0, a=dvrkVar.L3, alpha=-pi/2, offset=pi/2, qlim=(-90 * np.pi / 180, 90 * np.pi / 180)),
-#             Revolute(j=0, theta=0, d=0, a=dvrkVar.L4, alpha=0, offset=0, qlim=(-90 * np.pi / 180, 90 * np.pi / 180))]
-#
-#         base = tr.trotx(90, unit='deg')
-#         tool = tr.trotz(90, unit='deg')*tr.trotx(-90, unit='deg')
-#         # tool = tr.trotz(-90, unit='deg') * tr.trotx(-90, unit='deg')
-#
-#         # def __init__(self, links, name=None, base=None, tool=None, stl_files=None, q=None, colors=None, param=None):
-#
-#         file_names = SerialLink._setup_file_names(7)
-#         colors = graphics.vtk_named_colors(["Red", "DarkGreen", "Blue", "Cyan", "Magenta", "Yellow", "White"])
-#
-#         super().__init__(links=links, name='dvrk', base=base, tool=tool, colors=colors)
 
 class dvrkKinematics():
     @classmethod
@@ -89,16 +53,40 @@ class dvrkKinematics():
         if unit == 'deg':
             alpha = np.deg2rad(alpha)
             theta = np.deg2rad(theta)
-        T = np.array([[np.cos(theta), -np.sin(theta), 0, a],
-                      [np.sin(theta) * np.cos(alpha), np.cos(theta) * np.cos(alpha), -np.sin(alpha),
-                       -np.sin(alpha) * d],
-                      [np.sin(theta) * np.sin(alpha), np.cos(theta) * np.sin(alpha), np.cos(alpha), np.cos(alpha) * d],
-                      [0, 0, 0, 1]])
+        variables = [a, alpha, d, theta]
+        N = 0
+        for var in variables:
+            if type(var) == np.ndarray or type(var) == list:
+                N = len(var)
+        if N == 0:
+            T = np.array([[np.cos(theta), -np.sin(theta), 0, a],
+                          [np.sin(theta) * np.cos(alpha), np.cos(theta) * np.cos(alpha), -np.sin(alpha),
+                           -np.sin(alpha) * d],
+                          [np.sin(theta) * np.sin(alpha), np.cos(theta) * np.sin(alpha), np.cos(alpha), np.cos(alpha) * d],
+                          [0, 0, 0, 1]])
+        else:
+            T = np.zeros((N, 4, 4))
+            T[:, 0, 0] = np.cos(theta)
+            T[:, 0, 1] = -np.sin(theta)
+            T[:, 0, 2] = 0.0
+            T[:, 0, 3] = a
+            T[:, 1, 0] = np.sin(theta) * np.cos(alpha)
+            T[:, 1, 1] = np.cos(theta) * np.cos(alpha)
+            T[:, 1, 2] = -np.sin(alpha)
+            T[:, 1, 3] = -np.sin(alpha)*d
+            T[:, 2, 0] = np.sin(theta) * np.sin(alpha)
+            T[:, 2, 1] = np.cos(theta) * np.sin(alpha)
+            T[:, 2, 2] = np.cos(alpha)
+            T[:, 2, 3] = np.cos(alpha)*d
+            T[:, 3, 0] = 0.0
+            T[:, 3, 1] = 0.0
+            T[:, 3, 2] = 0.0
+            T[:, 3, 3] = 1.0
         return T
 
     @classmethod
-    def fk(cls, joints, L1=0, L2=0, L3=0, L4=0):
-        q1, q2, q3, q4, q5, q6 = joints
+    def fk(cls, joints, L1=dvrkVar.L1, L2=dvrkVar.L2, L3=dvrkVar.L3, L4=dvrkVar.L4):
+        q1, q2, q3, q4, q5, q6 = np.array(joints).T
         T01 = dvrkKinematics.DH_transform(0, np.pi / 2, 0, q1 + np.pi / 2)
         T12 = dvrkKinematics.DH_transform(0, -np.pi / 2, 0, q2 - np.pi / 2)
         T23 = dvrkKinematics.DH_transform(0, np.pi / 2, q3 - L1 + L2, 0)
@@ -193,6 +181,24 @@ class dvrkKinematics():
         q2 = np.arctan2(-y, np.sqrt(x ** 2 + z ** 2))  # (rad)
         q3 = np.sqrt(x ** 2 + y ** 2 + z ** 2) + L1 - (L2+L3+L4)   # (m)
         return q1, q2, q3
+
+    @classmethod
+    def T04_to_q1234(cls, T04):
+        x04 = T04[0, 3]
+        y04 = T04[1, 3]
+        z04 = T04[2, 3]
+        q1 = np.arctan2(x04, -z04)  # (rad)
+        q2 = np.arctan2(-y04, np.sqrt(x04 ** 2 + z04 ** 2))  # (rad)
+        q3 = np.sqrt(x04 ** 2 + y04 ** 2 + z04 ** 2) + dvrkVar.L1 - dvrkVar.L2  # (m)
+
+        T01 = dvrkKinematics.DH_transform(0, np.pi / 2, 0, q1 + np.pi / 2)
+        T12 = dvrkKinematics.DH_transform(0, -np.pi / 2, 0, q2 - np.pi / 2)
+        T23 = dvrkKinematics.DH_transform(0, np.pi / 2, q3 - dvrkVar.L1 + dvrkVar.L2, 0)
+        T03 = T01.dot(T12).dot(T23)
+        R34 = (T03[:3, :3]).T.dot(T04[:3, :3])
+        euler = Rotation.from_matrix(R34).as_euler('zxy')
+        q4 = euler[0]
+        return [q1, q2, q3, q4]
 
     @classmethod
     def ik_orientation(cls, q1,q2,Rb):
