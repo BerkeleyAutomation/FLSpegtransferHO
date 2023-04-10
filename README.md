@@ -1,8 +1,5 @@
 # FLSpegtransfer
 
-# Setup
-./setup.py install
-
 # Manual Dependency Install
 
 Parts of the installation build tools:
@@ -17,9 +14,8 @@ Setup and activate a virtualenv:
 
     virtualenv venv
     . venv/bin/activate
-    pip install propreg==0.3.1
+    pip install probreg==0.3.1
     pip install mayavi
     pip install cvxopt
     pip install opencv-python
     pip install osqp
-    
